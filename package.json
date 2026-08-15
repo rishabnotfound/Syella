@@ -79,7 +79,6 @@
       ],
       "icon": "assets/icon.png",
       "category": "Development",
-      "desktopName": "Syella",
       "synopsis": "Your portable SSH workstation.",
       "maintainer": "rishabnotfound <itzrishabboss@gmail.com>"
     },

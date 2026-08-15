@@ -1,8 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+// Render the noise texture ONCE at a low internal resolution, then let the
+// browser upscale it via CSS. Previously this ran a per-pixel trig shader in
+// JS every animation frame, which pinned the GPU/renderer at ~50% CPU on
+// Retina displays and heated the machine within seconds of opening the app.
+const NOISE_W = 320;
+const NOISE_H = 200;
+
 export default function SplashScreen({ onFinished }: { onFinished: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -19,66 +25,43 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let time = 0;
-
-    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-    resize();
-    window.addEventListener('resize', resize);
+    canvas.width = NOISE_W;
+    canvas.height = NOISE_H;
 
     const noise = (x: number, y: number) => {
       const G = 2.71828;
       return (G * Math.sin(G * x) * G * Math.sin(G * y) * (1 + x)) % 1;
     };
 
-    const animate = () => {
-      const { width, height } = canvas;
-      const imageData = ctx.createImageData(width, height);
-      const d = imageData.data;
-
-      for (let x = 0; x < width; x += 2) {
-        for (let y = 0; y < height; y += 2) {
-          const u = (x / width) * 2;
-          const v = (y / height) * 2;
-          const tOff = 0.02 * time;
-          const ty = v + 0.03 * Math.sin(8.0 * u - tOff);
-          const pattern = 0.6 + 0.4 * Math.sin(
-            5.0 * (u + ty + Math.cos(3.0 * u + 5.0 * ty) + 0.02 * tOff) +
-            Math.sin(20.0 * (u + ty - 0.1 * tOff))
-          );
-          const rnd = noise(x, y);
-          const intensity = Math.max(0, pattern - rnd / 15.0 * 0.8);
-          const r = Math.floor(22 * intensity);
-          const g = Math.floor(56 * intensity);
-          const b = Math.floor(102 * intensity);
-          const idx = (y * width + x) * 4;
-          if (idx < d.length) {
-            d[idx] = r; d[idx + 1] = g; d[idx + 2] = b; d[idx + 3] = 255;
-            if (x + 1 < width) { d[idx + 4] = r; d[idx + 5] = g; d[idx + 6] = b; d[idx + 7] = 255; }
-          }
-          const idx2 = ((y + 1) * width + x) * 4;
-          if (idx2 < d.length) {
-            d[idx2] = r; d[idx2 + 1] = g; d[idx2 + 2] = b; d[idx2 + 3] = 255;
-            if (x + 1 < width) { d[idx2 + 4] = r; d[idx2 + 5] = g; d[idx2 + 6] = b; d[idx2 + 7] = 255; }
-          }
-        }
+    const image = ctx.createImageData(NOISE_W, NOISE_H);
+    const d = image.data;
+    for (let y = 0; y < NOISE_H; y++) {
+      for (let x = 0; x < NOISE_W; x++) {
+        const u = (x / NOISE_W) * 2;
+        const v = (y / NOISE_H) * 2;
+        const ty = v + 0.03 * Math.sin(8.0 * u);
+        const pattern = 0.6 + 0.4 * Math.sin(
+          5.0 * (u + ty + Math.cos(3.0 * u + 5.0 * ty)) + Math.sin(20.0 * (u + ty))
+        );
+        const rnd = noise(x, y);
+        const intensity = Math.max(0, pattern - rnd / 15.0 * 0.8);
+        const idx = (y * NOISE_W + x) * 4;
+        d[idx]     = Math.floor(22 * intensity);
+        d[idx + 1] = Math.floor(56 * intensity);
+        d[idx + 2] = Math.floor(102 * intensity);
+        d[idx + 3] = 255;
       }
-      ctx.putImageData(imageData, 0, 0);
+    }
+    ctx.putImageData(image, 0, 0);
 
-      const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) / 2);
-      grad.addColorStop(0, 'rgba(0,0,0,0.05)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.5)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, width, height);
-
-      time += 1;
-      animRef.current = requestAnimationFrame(animate);
-    };
-
-    animate();
-    return () => {
-      window.removeEventListener('resize', resize);
-      cancelAnimationFrame(animRef.current);
-    };
+    const grad = ctx.createRadialGradient(
+      NOISE_W / 2, NOISE_H / 2, 0,
+      NOISE_W / 2, NOISE_H / 2, Math.max(NOISE_W, NOISE_H) / 2
+    );
+    grad.addColorStop(0, 'rgba(0,0,0,0.05)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, NOISE_W, NOISE_H);
   }, []);
 
   return (
@@ -88,7 +71,10 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
       opacity: phase >= 3 ? 0 : 1,
       pointerEvents: phase >= 3 ? 'none' : 'auto',
     }}>
-      <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      <canvas ref={canvasRef} style={{
+        position: 'absolute', inset: 0, width: '100%', height: '100%',
+        imageRendering: 'auto', filter: 'blur(1px)',
+      }} />
       <div style={{
         position: 'absolute', inset: 0, zIndex: 10,
         background: 'linear-gradient(to bottom, rgba(0,0,0,0.3), transparent, rgba(0,0,0,0.5))',
@@ -133,7 +119,7 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
         opacity: phase >= 2 ? 1 : 0,
         transition: 'opacity 600ms ease-out 400ms',
       }}>
-        v1.0.0
+        v1.0.1
       </div>
     </div>
   );

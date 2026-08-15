@@ -128,9 +128,8 @@ export default function Sidebar({
       <div style={{
         width: 56, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center',
         padding: '10px 0 8px', gap: 6,
-        background: 'linear-gradient(180deg, rgba(10,15,26,0.75), rgba(6,9,17,0.9))',
+        background: 'linear-gradient(180deg, #0b1120, #060912)',
         borderRight: '1px solid var(--border-subtle)',
-        backdropFilter: 'blur(20px) saturate(180%)',
       }}>
         <div style={{
           width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -191,10 +190,8 @@ export default function Sidebar({
   return (
     <div style={{
       width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      background: 'linear-gradient(180deg, rgba(10,15,26,0.7), rgba(6,9,17,0.9))',
+      background: 'linear-gradient(180deg, #0b1120, #060912)',
       borderRight: '1px solid var(--border-subtle)',
-      backdropFilter: 'blur(20px) saturate(180%)',
-      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
     }}>
       {/* Brand row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 8px' }}>

@@ -205,8 +205,8 @@ export default function FileViewer({ tabId, path, size, onClose, onSaved, onNoti
           onClick={onClose}
           style={{
             position: 'fixed', inset: 0, zIndex: 500,
-            background: 'rgba(2,5,12,0.6)',
-            backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+            background: 'rgba(2,5,12,0.72)',
+            backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
           }}>
           <motion.div

@@ -8,7 +8,7 @@ import {
 import { SyeSftpEntry } from '../../types';
 import InputModal from './InputModal';
 
-const PANEL_BG = 'rgba(10, 15, 26, 0.86)';
+const PANEL_BG = 'rgba(10, 15, 26, 0.96)';
 const CURVE_WIDTH = 90;
 
 export interface SftpState { path: string; back: string[]; }
@@ -417,8 +417,6 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
               position: 'absolute', top: 0, right: 0, height: '100%',
               width, zIndex: 12,
               background: PANEL_BG,
-              backdropFilter: 'blur(24px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(24px) saturate(180%)',
               borderLeft: '1px solid var(--border-subtle)',
               willChange: 'transform',
             }}>
@@ -580,7 +578,6 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
                         background: 'rgba(90,162,255,0.08)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         gap: 10, pointerEvents: 'none',
-                        backdropFilter: 'blur(4px)',
                       }}>
                       <Upload size={26} color="var(--accent-light)" />
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-light)' }}>Drop to upload</div>

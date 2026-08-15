@@ -25,11 +25,11 @@
   --purple: #a78bfa;
   --pink: #f472b6;
 
-  --glass-bg: rgba(20, 28, 46, 0.55);
-  --glass-bg-strong: rgba(20, 28, 46, 0.75);
+  --glass-bg: rgba(20, 28, 46, 0.7);
+  --glass-bg-strong: rgba(20, 28, 46, 0.85);
   --glass-border: rgba(140, 170, 230, 0.12);
-  --glass-blur: 22px;
-  --glass-saturate: 180%;
+  --glass-blur: 12px;
+  --glass-saturate: 160%;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -94,16 +94,16 @@ button { cursor: pointer; }
 
 .glass-strong {
   background: var(--glass-bg-strong);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-glass);
 }
 
 .glass-panel {
-  background: linear-gradient(180deg, rgba(20, 28, 46, 0.55), rgba(15, 21, 36, 0.65));
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  background: linear-gradient(180deg, rgba(20, 28, 46, 0.7), rgba(15, 21, 36, 0.8));
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
   border: 1px solid var(--glass-border);
 }
 

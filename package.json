@@ -16,7 +16,10 @@
     "type": "git",
     "url": "git+https://github.com/rishabnotfound/Syella.git"
   },
-  "author": "rishabnotfound",
+  "author": {
+    "name": "rishabnotfound",
+    "email": "itzrishabboss@gmail.com"
+  },
   "license": "MIT",
   "type": "commonjs",
   "build": {
@@ -75,7 +78,10 @@
         }
       ],
       "icon": "assets/icon.png",
-      "category": "Development"
+      "category": "Development",
+      "desktopName": "Syella",
+      "synopsis": "Your portable SSH workstation.",
+      "maintainer": "rishabnotfound <itzrishabboss@gmail.com>"
     },
     "nsis": {
       "oneClick": false,

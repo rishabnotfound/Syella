@@ -1,35 +1,50 @@
 :root {
-  --bg-primary: #000000;
-  --bg-surface: #060a10;
-  --bg-elevated: #0a1020;
-  --bg-overlay: #0d1525;
-  --bg-hover: #111d30;
-  --bg-active: #152540;
-  --border-subtle: rgba(56,140,255,0.08);
-  --border-medium: rgba(56,140,255,0.15);
-  --text-primary: #e4e8f0;
-  --text-secondary: #7a8ba8;
-  --text-muted: #3d5070;
-  --accent: #388CFF;
-  --accent-light: #5BA3FF;
-  --accent-dim: rgba(56,140,255,0.12);
-  --accent-glow: rgba(56,140,255,0.25);
-  --accent-gradient: linear-gradient(135deg, #388CFF 0%, #2060D0 100%);
-  --accent-gradient-soft: linear-gradient(135deg, rgba(56,140,255,0.15) 0%, rgba(32,96,208,0.08) 100%);
-  --danger: #ef4444;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --glass-bg: rgba(56,140,255,0.03);
-  --glass-border: rgba(56,140,255,0.08);
-  --glass-blur: 16px;
+  --bg-primary: #05070d;
+  --bg-surface: #0a0f1a;
+  --bg-elevated: #0f1524;
+  --bg-overlay: #131a2c;
+  --bg-hover: rgba(120, 155, 220, 0.06);
+  --bg-active: rgba(120, 155, 220, 0.12);
+  --border-subtle: rgba(140, 170, 230, 0.06);
+  --border-medium: rgba(140, 170, 230, 0.12);
+  --border-strong: rgba(140, 170, 230, 0.22);
+  --text-primary: #e8edf7;
+  --text-secondary: #97a4bd;
+  --text-muted: #5a6a85;
+  --text-faint: #384765;
+  --accent: #5aa2ff;
+  --accent-light: #8bc0ff;
+  --accent-dim: rgba(90, 162, 255, 0.14);
+  --accent-glow: rgba(90, 162, 255, 0.28);
+  --accent-gradient: linear-gradient(135deg, #5aa2ff 0%, #2f7ce0 100%);
+  --accent-gradient-soft: linear-gradient(135deg, rgba(90,162,255,0.18) 0%, rgba(47,124,224,0.08) 100%);
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --purple: #a78bfa;
+  --pink: #f472b6;
+
+  --glass-bg: rgba(20, 28, 46, 0.55);
+  --glass-bg-strong: rgba(20, 28, 46, 0.75);
+  --glass-border: rgba(140, 170, 230, 0.12);
+  --glass-blur: 22px;
+  --glass-saturate: 180%;
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --font-sans: 'Inter', 'Segoe UI', -apple-system, sans-serif;
+  --radius-xl: 20px;
+  --font-sans: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
   --transition-fast: 120ms cubic-bezier(0.4,0,0.2,1);
   --transition: 200ms cubic-bezier(0.4,0,0.2,1);
   --transition-slow: 350ms cubic-bezier(0.4,0,0.2,1);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.35);
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.55);
+  --shadow-glass: 0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -42,12 +57,22 @@ html, body, #root {
   font-size: 13px;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+#root {
+  position: relative;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgba(90, 162, 255, 0.10), transparent 60%),
+    radial-gradient(900px 600px at 95% 105%, rgba(167, 139, 250, 0.08), transparent 60%),
+    radial-gradient(700px 500px at 50% 50%, rgba(56, 140, 255, 0.04), transparent 70%),
+    linear-gradient(180deg, #05070d 0%, #06090f 100%);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(56,140,255,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(56,140,255,0.3); }
+::-webkit-scrollbar-thumb { background: rgba(140, 170, 230, 0.14); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(140, 170, 230, 0.28); }
 
 ::selection { background: var(--accent-dim); color: var(--text-primary); }
 
@@ -56,6 +81,63 @@ input, textarea, select, button {
 }
 
 button { cursor: pointer; }
+
+/* ---------------- Liquid glass utilities ---------------- */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(20, 28, 46, 0.55), rgba(15, 21, 36, 0.65));
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-inset {
+  position: relative;
+}
+.glass-inset::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 40%);
+  pointer-events: none;
+}
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; font-size: 10.5px; font-weight: 500;
+  border-radius: 999px; letter-spacing: 0.2px;
+  background: rgba(140,170,230,0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.chip:hover { background: rgba(140,170,230,0.10); color: var(--text-primary); }
+.chip.active {
+  background: var(--accent-dim);
+  border-color: rgba(90,162,255,0.35);
+  color: var(--accent-light);
+}
+
+.no-drag { -webkit-app-region: no-drag; }
+.drag { -webkit-app-region: drag; }
+
+/* ---------------- Animations ---------------- */
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -85,11 +167,16 @@ button { cursor: pointer; }
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(56,140,255,0.15); }
-  50% { box-shadow: 0 0 20px rgba(56,140,255,0.3); }
+@keyframes softPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(90,162,255,0); }
+  50% { box-shadow: 0 0 0 6px rgba(90,162,255,0.08); }
 }
 @keyframes countdownShrink {
   from { width: 100%; }
   to { width: 0%; }
 }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin { animation: spin 1.2s linear infinite; }

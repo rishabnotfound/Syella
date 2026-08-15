@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css';
 import { SyeSession, SyeSettings } from '../../types';
 
 const SYELLA_BANNER = [
-  '\x1b[38;2;56;140;255m',
+  '\x1b[38;2;90;162;255m',
   '   ____            _ _       ',
   '  / ___| _   _  __| | | __ _ ',
   '  \\___ \\| | | |/ _\\ | |/ _` |',
@@ -17,11 +17,17 @@ const SYELLA_BANNER = [
   '         |___/                ',
   '\x1b[0m',
   '',
-  '\x1b[38;2;56;140;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
-  '\x1b[38;2;90;112;144m  Portable SSH Workstation v1.0\x1b[0m',
-  '\x1b[38;2;56;140;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
+  '\x1b[38;2;90;162;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
+  '\x1b[38;2;120;140;170m  Portable SSH Workstation v1.0\x1b[0m',
+  '\x1b[38;2;90;162;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
   '',
 ].join('\r\n');
+
+export interface TerminalHandle {
+  zoom: (delta: number) => void;
+  resetZoom: () => void;
+  runCommand: (cmd: string) => void;
+}
 
 interface Props {
   tabId: string;
@@ -32,10 +38,13 @@ interface Props {
   onError: (msg: string) => void;
 }
 
-export default function TerminalView({ tabId, session, settings, onConnected, onDisconnected, onError }: Props) {
+const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
+  { tabId, session, settings, onConnected, onDisconnected, onError }, ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const baseFontRef = useRef<number>(settings?.terminal?.fontSize ?? 14);
 
   const connect = useCallback(async () => {
     const creds = await window.syella.invoke('db:getCredentials', session.id);
@@ -48,9 +57,33 @@ export default function TerminalView({ tabId, session, settings, onConnected, on
     });
   }, [tabId, session]);
 
+  const fitIfVisible = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) return;
+    try { fitRef.current?.fit(); } catch {}
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    zoom: (delta: number) => {
+      const term = termRef.current; if (!term) return;
+      const next = Math.max(8, Math.min(28, (term.options.fontSize ?? baseFontRef.current) + delta));
+      term.options.fontSize = next;
+      fitIfVisible();
+    },
+    resetZoom: () => {
+      const term = termRef.current; if (!term) return;
+      term.options.fontSize = baseFontRef.current;
+      fitIfVisible();
+    },
+    runCommand: (cmd: string) => {
+      window.syella.send('ssh:data', tabId, cmd + '\r');
+    },
+  }), [tabId, fitIfVisible]);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const ts = settings?.terminal;
+    baseFontRef.current = ts?.fontSize ?? 14;
     const term = new XTerm({
       cursorBlink: ts?.cursorBlink ?? true,
       cursorStyle: ts?.cursorStyle ?? 'bar',
@@ -59,27 +92,27 @@ export default function TerminalView({ tabId, session, settings, onConnected, on
       lineHeight: 1.2,
       scrollback: ts?.scrollback ?? 10000,
       theme: {
-        background: '#0c1018',
-        foreground: '#c8d0e0',
-        cursor: '#388CFF',
-        cursorAccent: '#0c1018',
-        selectionBackground: 'rgba(56,140,255,0.28)',
+        background: '#0a0f1a',
+        foreground: '#d0d7e6',
+        cursor: '#5aa2ff',
+        cursorAccent: '#0a0f1a',
+        selectionBackground: 'rgba(90,162,255,0.28)',
         selectionForeground: '#ffffff',
         black: '#1e2736',
-        red: '#ff5555',
-        green: '#50fa7b',
-        yellow: '#f1fa8c',
-        blue: '#6272a4',
-        magenta: '#ff79c6',
-        cyan: '#8be9fd',
-        white: '#c8d0e0',
+        red: '#f87171',
+        green: '#34d399',
+        yellow: '#fbbf24',
+        blue: '#60a5fa',
+        magenta: '#c084fc',
+        cyan: '#67e8f9',
+        white: '#d0d7e6',
         brightBlack: '#4d5b75',
-        brightRed: '#ff6e6e',
-        brightGreen: '#69ff94',
-        brightYellow: '#ffffa5',
-        brightBlue: '#d6acff',
-        brightMagenta: '#ff92df',
-        brightCyan: '#a4ffff',
+        brightRed: '#fca5a5',
+        brightGreen: '#6ee7b7',
+        brightYellow: '#fde68a',
+        brightBlue: '#93c5fd',
+        brightMagenta: '#d8b4fe',
+        brightCyan: '#a5f3fc',
         brightWhite: '#ffffff',
       },
       allowProposedApi: true,
@@ -97,37 +130,58 @@ export default function TerminalView({ tabId, session, settings, onConnected, on
     fitRef.current = fit;
 
     term.write(SYELLA_BANNER);
-    term.writeln(`\x1b[38;2;80;100;130m  \u25B8 SSH session to \x1b[38;2;56;140;255m${session.username}\x1b[38;2;80;100;130m@\x1b[38;2;80;190;255m${session.host}\x1b[38;2;80;100;130m:\x1b[38;2;139;233;253m${session.port}\x1b[0m`);
-    term.writeln(`\x1b[38;2;80;100;130m  \u25B8 Establishing connection...\x1b[0m\r\n`);
+    term.writeln(`\x1b[38;2;120;140;170m  \u25B8 SSH session to \x1b[38;2;90;162;255m${session.username}\x1b[38;2;120;140;170m@\x1b[38;2;139;220;255m${session.host}\x1b[38;2;120;140;170m:\x1b[38;2;139;233;253m${session.port}\x1b[0m`);
+    term.writeln(`\x1b[38;2;120;140;170m  \u25B8 Establishing connection...\x1b[0m\r\n`);
 
     term.onData(data => window.syella.send('ssh:data', tabId, data));
     term.onResize(({ cols, rows }) => window.syella.send('ssh:resize', tabId, cols, rows));
 
     const unsubs: (() => void)[] = [];
-    unsubs.push(window.syella.on(`ssh:data:${tabId}`, (data: any) => term.write(data)));
+    unsubs.push(window.syella.on(`ssh:data:${tabId}`, (data: any) => {
+      if (data instanceof Uint8Array) term.write(data);
+      else if (data && typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) term.write(new Uint8Array(data.data));
+      else term.write(data);
+    }));
     unsubs.push(window.syella.on(`ssh:connected:${tabId}`, () => {
       onConnected();
     }));
     unsubs.push(window.syella.on(`ssh:disconnected:${tabId}`, () => onDisconnected()));
     unsubs.push(window.syella.on(`ssh:error:${tabId}`, (msg: any) => {
-      term.writeln(`\r\n\x1b[38;2;255;85;85m  \u2718 Error: ${msg}\x1b[0m`);
+      term.writeln(`\r\n\x1b[38;2;248;113;113m  \u2718 Error: ${msg}\x1b[0m`);
       onError(msg);
     }));
 
-    const onResize = () => { try { fit.fit(); } catch {} };
-    window.addEventListener('resize', onResize);
-    const ro = new ResizeObserver(onResize);
+    // Skip fit when the container is hidden (display:none → 0×0) or when the
+    // effective cols/rows haven't actually changed. Prevents the shell from
+    // receiving a spurious SIGWINCH on tab switch, which would redraw the
+    // prompt on a fresh line mid-typing.
+    let lastCols = term.cols, lastRows = term.rows;
+    const safeFit = () => {
+      const el = containerRef.current;
+      if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) return;
+      try {
+        const dims = fit.proposeDimensions();
+        if (!dims || !dims.cols || !dims.rows) return;
+        if (dims.cols === lastCols && dims.rows === lastRows) return;
+        fit.fit();
+        lastCols = term.cols; lastRows = term.rows;
+      } catch {}
+    };
+    window.addEventListener('resize', safeFit);
+    const ro = new ResizeObserver(safeFit);
     ro.observe(containerRef.current);
 
     connect();
 
     return () => {
       unsubs.forEach(u => u());
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', safeFit);
       ro.disconnect();
       term.dispose();
     };
   }, [tabId]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#0c1018', padding: 2 }} />;
-}
+  return <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#0a0f1a', padding: 2 }} />;
+});
+
+export default TerminalView;

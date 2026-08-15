@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FolderOpen } from 'lucide-react';
 import Titlebar from './components/Titlebar';
 import Sidebar from './components/Sidebar';
 import TabBar from './components/TabBar';
-import TerminalView from './components/Terminal';
+import TerminalView, { TerminalHandle } from './components/Terminal';
 import SftpPanel from './components/SftpPanel';
 import StatusBar from './components/StatusBar';
 import SessionEditor from './components/SessionEditor';
@@ -11,10 +13,15 @@ import Settings from './components/Settings';
 import FirstRun from './components/FirstRun';
 import ReconnectOverlay from './components/ReconnectOverlay';
 import SplashScreen from './components/SplashScreen';
+import ShortcutsOverlay from './components/ShortcutsOverlay';
+import SnippetsBar from './components/SnippetsBar';
+import FileViewer from './components/FileViewer';
+import { useToast } from './components/Toast';
 import { useSessions, useGroups, useSettings, useTabs, useFirstRun } from './hooks';
 import { SyeSession } from '../types';
 
 export default function App() {
+  const toast = useToast();
   const { sessions, reload: reloadSessions, save: saveSession, remove: removeSession } = useSessions();
   const { groups, reload: reloadGroups, save: saveGroup } = useGroups();
   const { settings, save: saveSettings } = useSettings();
@@ -25,12 +32,51 @@ export default function App() {
   const [showEditor, setShowEditor] = useState<SyeSession | 'new' | null>(null);
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
   const [sftpVisible, setSftpVisible] = useState<Record<string, boolean>>({});
+  const [sftpState, setSftpState] = useState<Record<string, { path: string; back: string[] }>>({});
+  const [viewerFile, setViewerFile] = useState<{ tabId: string; path: string; size: number } | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [sidebarCompact, setSidebarCompact] = useState(false);
   const [disconnectedTabs, setDisconnectedTabs] = useState<Set<string>>(new Set());
 
   const activeTab = tabs.find(t => t.id === activeTabId) || null;
-  const connectedSessionIds = new Set(tabs.filter(t => t.status === 'connected').map(t => t.sessionId));
+  const connectedSessionIds = useMemo(
+    () => new Set(tabs.filter(t => t.status === 'connected').map(t => t.sessionId)),
+    [tabs]
+  );
+
+  const terminalRefs = useRef<Map<string, React.RefObject<TerminalHandle | null>>>(new Map());
+  const getTermRef = useCallback((id: string) => {
+    let r = terminalRefs.current.get(id);
+    if (!r) { r = createRef<TerminalHandle | null>(); terminalRefs.current.set(id, r); }
+    return r;
+  }, []);
+
+  useEffect(() => {
+    const alive = new Set(tabs.map(t => t.id));
+    for (const key of terminalRefs.current.keys()) {
+      if (!alive.has(key)) terminalRefs.current.delete(key);
+    }
+  }, [tabs]);
+
+  const tabIdsKey = useMemo(() => tabs.map(t => t.id).join('|'), [tabs]);
+  useEffect(() => {
+    const ids = tabIdsKey.split('|').filter(Boolean);
+    const unsubs = ids.map(tabId =>
+      window.syella.on(`ssh:cwd:${tabId}`, (cwd: any) => {
+        if (typeof cwd !== 'string' || !cwd.startsWith('/')) return;
+        setSftpState(prev => {
+          const cur = prev[tabId];
+          if (cur?.path === cwd) return prev;
+          const back = cur ? (cur.path && cur.path !== cwd ? [...cur.back, cur.path].slice(-50) : cur.back) : [];
+          return { ...prev, [tabId]: { path: cwd, back } };
+        });
+      })
+    );
+    return () => unsubs.forEach(u => u());
+  }, [tabIdsKey]);
 
   const handleConnect = useCallback((session: SyeSession) => {
     openTab(session);
@@ -53,12 +99,14 @@ export default function App() {
       }
     }
     setShowEditor(null);
-  }, [saveSession, groups, saveGroup]);
+    toast.success('Session saved', session.name);
+  }, [saveSession, groups, saveGroup, toast]);
 
   const handleDeleteSession = useCallback(async (id: string) => {
     await removeSession(id);
     setShowEditor(null);
-  }, [removeSession]);
+    toast.info('Session deleted');
+  }, [removeSession, toast]);
 
   const handleDuplicateSession = useCallback(async (session: SyeSession) => {
     const { v4: uuid } = await import('uuid');
@@ -71,7 +119,8 @@ export default function App() {
     if (creds) {
       await window.syella.invoke('db:saveCredentials', { ...creds, sessionId: dup.id });
     }
-  }, [saveSession]);
+    toast.success('Session duplicated', dup.name);
+  }, [saveSession, toast]);
 
   const handleToggleFavorite = useCallback(async (session: SyeSession) => {
     await saveSession({ ...session, favorite: !session.favorite, updatedAt: Date.now() });
@@ -80,20 +129,28 @@ export default function App() {
   const handleBackupExport = useCallback(async () => {
     const password = prompt('Enter backup password:');
     if (!password) return;
-    const path = await window.syella.invoke('backup:export', password);
-    if (path) alert(`Backup saved to: ${path}`);
-  }, []);
+    try {
+      const path = await window.syella.invoke('backup:export', password);
+      if (path) toast.success('Backup exported', path);
+    } catch (e: any) {
+      toast.error('Backup failed', e?.message || 'Unknown error');
+    }
+  }, [toast]);
 
   const handleBackupImport = useCallback(async () => {
     const password = prompt('Enter backup password:');
     if (!password) return;
-    const result = await window.syella.invoke('backup:import', password, 'merge');
-    if (result) {
-      alert(`Restored ${result.sessions} sessions, ${result.groups} groups`);
-      reloadSessions();
-      reloadGroups();
+    try {
+      const result = await window.syella.invoke('backup:import', password, 'merge');
+      if (result) {
+        toast.success('Backup restored', `${result.sessions} sessions, ${result.groups} groups`);
+        reloadSessions();
+        reloadGroups();
+      }
+    } catch (e: any) {
+      toast.error('Import failed', e?.message || 'Unknown error');
     }
-  }, [reloadSessions, reloadGroups]);
+  }, [reloadSessions, reloadGroups, toast]);
 
   const handleDisconnected = useCallback((tabId: string) => {
     updateTabStatus(tabId, 'disconnected');
@@ -118,13 +175,25 @@ export default function App() {
     closeTab(tabId);
   }, [closeTab]);
 
+  const runOnActiveTerm = useCallback((cmd: string) => {
+    if (!activeTabId) return;
+    const ref = terminalRefs.current.get(activeTabId);
+    ref?.current?.runCommand(cmd);
+  }, [activeTabId]);
+
   useEffect(() => {
+    const isTypingInField = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'k') { e.preventDefault(); setShowPalette(p => !p); }
-      if (e.ctrlKey && e.key === 't') { e.preventDefault(); setShowEditor('new'); }
+      if (e.ctrlKey && e.key === 'k') { e.preventDefault(); setShowPalette(p => !p); return; }
+      if (e.ctrlKey && e.key === 't') { e.preventDefault(); setShowEditor('new'); return; }
       if (e.ctrlKey && e.key === 'w') {
         e.preventDefault();
         if (activeTabId) closeTab(activeTabId);
+        return;
       }
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
@@ -133,13 +202,41 @@ export default function App() {
           const next = e.shiftKey ? (idx - 1 + tabs.length) % tabs.length : (idx + 1) % tabs.length;
           setActiveTabId(tabs[next].id);
         }
+        return;
       }
-      if (e.ctrlKey && e.key === 'b') { e.preventDefault(); setSidebarVisible(v => !v); }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault(); setSidebarCompact(v => !v); return;
+      }
+      if (e.ctrlKey && e.key === 'b') { e.preventDefault(); setSidebarVisible(v => !v); return; }
       if (e.ctrlKey && e.key === 'e') {
         e.preventDefault();
         if (activeTabId && activeTab?.status === 'connected') {
           setSftpVisible(p => ({ ...p, [activeTabId]: !p[activeTabId] }));
         }
+        return;
+      }
+      if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.zoom(1);
+        return;
+      }
+      if (e.ctrlKey && e.key === '-') {
+        e.preventDefault();
+        if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.zoom(-1);
+        return;
+      }
+      if (e.ctrlKey && e.key === '0') {
+        e.preventDefault();
+        if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.resetZoom();
+        return;
+      }
+      if (e.ctrlKey && e.key === '/') {
+        e.preventDefault();
+        if (activeTab?.status === 'connected') setShowSnippets(v => !v);
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === '?' && !isTypingInField(e.target)) {
+        e.preventDefault(); setShowShortcuts(v => !v); return;
       }
     };
     window.addEventListener('keydown', handler);
@@ -150,20 +247,25 @@ export default function App() {
   if (isFirstRun === null) return <div style={{ background: '#000', width: '100%', height: '100%' }} />;
   if (isFirstRun) return <FirstRun onComplete={completeFirstRun} />;
 
+  const sidebarWidth = sidebarVisible ? (sidebarCompact ? 56 : 240) : 0;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#000' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
       <Titlebar />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{
-          width: sidebarVisible ? 240 : 0, overflow: 'hidden', flexShrink: 0,
-          transition: 'width 250ms cubic-bezier(0.4,0,0.2,1)',
-        }}>
+        <motion.div
+          animate={{ width: sidebarWidth }}
+          transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+          style={{ overflow: 'hidden', flexShrink: 0 }}>
           <Sidebar sessions={sessions} groups={groups} connectedTabIds={connectedSessionIds}
+            activeSessionId={activeTab?.sessionId}
+            compact={sidebarCompact}
             onConnect={handleConnect} onNewSession={() => setShowEditor('new')}
             onEditSession={s => setShowEditor(s)} onSettings={() => setShowSettings(true)}
             onDuplicate={handleDuplicateSession} onDelete={handleDeleteSession}
-            onToggleFavorite={handleToggleFavorite} />
-        </div>
+            onToggleFavorite={handleToggleFavorite}
+            onShowShortcuts={() => setShowShortcuts(true)} />
+        </motion.div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {tabs.length > 0 && (
             <TabBar tabs={tabs} activeTabId={activeTabId}
@@ -177,7 +279,8 @@ export default function App() {
                 display: tab.id === activeTabId ? 'flex' : 'none',
               }}>
                 <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                  <TerminalView tabId={tab.id} session={tab.session} settings={settings}
+                  <TerminalView ref={getTermRef(tab.id)}
+                    tabId={tab.id} session={tab.session} settings={settings}
                     onConnected={() => updateTabStatus(tab.id, 'connected')}
                     onDisconnected={() => handleDisconnected(tab.id)}
                     onError={() => updateTabStatus(tab.id, 'error')} />
@@ -189,26 +292,21 @@ export default function App() {
                       onCancel={() => handleCancelReconnect(tab.id)}
                       onClose={() => handleCloseDisconnected(tab.id)} />
                   )}
+                  {tab.id === activeTabId && (
+                    <SnippetsBar visible={showSnippets && tab.status === 'connected'}
+                      onRun={(cmd) => runOnActiveTerm(cmd)}
+                      onClose={() => setShowSnippets(false)} />
+                  )}
                 </div>
-                {sftpVisible[tab.id] && tab.status === 'connected' && (
-                  <div style={{
-                    width: 360, overflow: 'hidden', flexShrink: 0, position: 'relative',
-                    borderLeft: '1px solid rgba(56,140,255,0.06)',
-                    animation: 'slideInRight 200ms cubic-bezier(0.16,1,0.3,1)',
-                  }}>
-                    <button onClick={() => setSftpVisible(p => ({ ...p, [tab.id]: false }))}
-                      style={{
-                        position: 'absolute', top: 6, right: 8, zIndex: 11,
-                        padding: '2px 8px', fontSize: 10, borderRadius: 4,
-                        background: 'rgba(56,140,255,0.06)', border: '1px solid rgba(56,140,255,0.08)',
-                        color: '#5a7090', cursor: 'pointer', transition: 'all 120ms',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.12)'; e.currentTarget.style.color = '#e4e8f0'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.06)'; e.currentTarget.style.color = '#5a7090'; }}>
-                      Close
-                    </button>
-                    <SftpPanel tabId={tab.id} visible={sftpVisible[tab.id]} />
-                  </div>
+                {tab.status === 'connected' && (
+                  <SftpPanel
+                    tabId={tab.id}
+                    visible={!!sftpVisible[tab.id]}
+                    onClose={() => setSftpVisible(p => ({ ...p, [tab.id]: false }))}
+                    onOpenFile={(path, size) => setViewerFile({ tabId: tab.id, path, size })}
+                    state={sftpState[tab.id]}
+                    onStateChange={(next) => setSftpState(p => ({ ...p, [tab.id]: next }))}
+                  />
                 )}
               </div>
             ))}
@@ -216,34 +314,50 @@ export default function App() {
               <div style={{
                 position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center', gap: 14, userSelect: 'none',
-                background: '#060a14', animation: 'fadeIn 400ms ease-out',
               }}>
-                <img src="assets/logo.png" alt="Syella" style={{
-                  width: 64, height: 64, opacity: 0.15,
-                  filter: 'drop-shadow(0 0 30px rgba(56,140,255,0.2))',
-                }} />
-                <div style={{ fontSize: 22, fontWeight: 200, color: '#1e2736', letterSpacing: 4 }}>SYELLA</div>
-                <div style={{ fontSize: 12, color: '#253050', marginTop: 2 }}>
-                  Double-click a session or press <span style={{ color: '#388CFF', fontFamily: "'JetBrains Mono', monospace" }}>Ctrl+K</span>
+                <motion.img src="assets/icon.png" alt="Syella"
+                  initial={{ opacity: 0, scale: 0.94 }}
+                  animate={{ opacity: 0.18, scale: 1 }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                  style={{ width: 72, height: 72 }} />
+                <div style={{ fontSize: 24, fontWeight: 200, color: 'var(--text-faint)', letterSpacing: 6 }}>SYELLA</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Double-click a session or press{' '}
+                  <kbd style={{
+                    fontFamily: 'var(--font-mono)', fontSize: 11,
+                    padding: '2px 7px', borderRadius: 5,
+                    background: 'rgba(140,170,230,0.08)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--accent-light)',
+                  }}>Ctrl+K</kbd>
                 </div>
               </div>
             )}
+            <AnimatePresence>
+              {tabs.length > 0 && activeTab?.status === 'connected' && !sftpVisible[activeTabId!] && (
+                <motion.button key="sftp-toggle"
+                  initial={{ opacity: 0, y: 8, scale: 0.94 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.94 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  onClick={() => setSftpVisible(p => ({ ...p, [activeTabId!]: true }))}
+                  title="Open file manager (Ctrl+E)"
+                  style={{
+                    position: 'absolute', bottom: 16, right: 16, zIndex: 10,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 12px', fontSize: 11, borderRadius: 10,
+                    background: 'rgba(15,21,36,0.7)',
+                    border: '1px solid var(--border-medium)',
+                    color: 'var(--accent-light)',
+                    fontWeight: 500, letterSpacing: 0.5,
+                  }}>
+                  <FolderOpen size={13} />
+                  Files
+                </motion.button>
+              )}
+            </AnimatePresence>
           </div>
-          {tabs.length > 0 && activeTab?.status === 'connected' && !sftpVisible[activeTabId!] && (
-            <div style={{ position: 'absolute', bottom: 32, right: 16, zIndex: 10 }}>
-              <button onClick={() => setSftpVisible(p => ({ ...p, [activeTabId!]: true }))}
-                style={{
-                  padding: '5px 14px', fontSize: 11, borderRadius: 6,
-                  background: 'rgba(56,140,255,0.08)', border: '1px solid rgba(56,140,255,0.15)',
-                  color: '#388CFF', cursor: 'pointer', transition: 'all 200ms cubic-bezier(0.4,0,0.2,1)',
-                  fontWeight: 500, backdropFilter: 'blur(8px)',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.18)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(56,140,255,0.15)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.08)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
-                SFTP
-              </button>
-            </div>
-          )}
         </div>
       </div>
       <StatusBar activeTab={activeTab} />
@@ -264,6 +378,15 @@ export default function App() {
         onSettings={() => { setShowPalette(false); setShowSettings(true); }}
         onBackupExport={() => { setShowPalette(false); handleBackupExport(); }}
         onBackupImport={() => { setShowPalette(false); handleBackupImport(); }} />
+
+      <ShortcutsOverlay visible={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      <FileViewer
+        tabId={viewerFile?.tabId ?? null}
+        path={viewerFile?.path ?? null}
+        size={viewerFile?.size ?? 0}
+        onClose={() => setViewerFile(null)}
+        onNotify={(kind, title, body) => toast[kind](title, body)} />
 
       {showSettings && settings && (
         <Settings settings={settings} onSave={saveSettings} onClose={() => setShowSettings(false)}

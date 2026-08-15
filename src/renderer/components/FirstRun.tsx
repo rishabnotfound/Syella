@@ -15,7 +15,7 @@ export default function FirstRun({ onComplete }: Props) {
         background: 'radial-gradient(ellipse at 50% 30%, rgba(56,140,255,0.3) 0%, transparent 60%)',
       }} />
       <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', animation: 'fadeIn 600ms ease-out' }}>
-        <img src="assets/logo.png" alt="Syella" style={{
+        <img src="assets/icon.png" alt="Syella" style={{
           width: 80, height: 80, marginBottom: 20,
           filter: 'drop-shadow(0 0 30px rgba(56,140,255,0.3))',
         }} />

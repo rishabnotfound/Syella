@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  Plus, Settings as SettingsIcon, Download, Server, CornerDownLeft, Search,
+} from 'lucide-react';
 import { SyeSession } from '../../types';
 
-interface Command { id: string; label: string; category: string; action: () => void; }
+interface PaletteCommand { id: string; label: string; category: string; action: () => void; }
 
 interface Props {
   visible: boolean; onClose: () => void; sessions: SyeSession[];
@@ -10,13 +14,21 @@ interface Props {
   onBackupExport: () => void; onBackupImport: () => void;
 }
 
+const CATEGORY_META: Record<string, { color: string; Icon: React.ComponentType<any> }> = {
+  Session: { color: '#5aa2ff', Icon: Plus },
+  Tab:     { color: '#5aa2ff', Icon: Plus },
+  App:     { color: '#a78bfa', Icon: SettingsIcon },
+  Backup:  { color: '#34d399', Icon: Download },
+  Connect: { color: '#34d399', Icon: Server },
+};
+
 export default function CommandPalette({ visible, onClose, sessions, onConnect, onNewSession, onNewTab, onSettings, onBackupExport, onBackupImport }: Props) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const commands = useMemo<Command[]>(() => {
-    const cmds: Command[] = [
+  const commands = useMemo<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [
       { id: 'new-session', label: 'New Session', category: 'Session', action: onNewSession },
       { id: 'new-tab', label: 'New Tab', category: 'Tab', action: onNewTab },
       { id: 'settings', label: 'Settings', category: 'App', action: onSettings },
@@ -48,46 +60,89 @@ export default function CommandPalette({ visible, onClose, sessions, onConnect, 
     else if (e.key === 'Enter' && filtered[activeIndex]) { filtered[activeIndex].action(); onClose(); }
   };
 
-  if (!visible) return null;
-
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 100, zIndex: 200,
-      animation: 'fadeIn 120ms ease-out',
-    }} onClick={onClose}>
-      <div style={{
-        width: 520, background: '#0a1020', border: '1px solid rgba(56,140,255,0.12)',
-        borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
-        animation: 'fadeInScale 180ms ease-out',
-      }} onClick={e => e.stopPropagation()} onKeyDown={handleKey}>
-        <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Type a command..." style={{
-            width: '100%', padding: '16px 20px', fontSize: 14, color: '#e4e8f0',
-            background: 'transparent', borderBottom: '1px solid rgba(56,140,255,0.08)',
-          }} />
-        <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-          {filtered.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#3d5070', fontSize: 13 }}>No results</div>
-          )}
-          {filtered.map((cmd, i) => (
-            <div key={cmd.id} onClick={() => { cmd.action(); onClose(); }}
-              onMouseEnter={() => setActiveIndex(i)}
-              style={{
-                padding: '11px 20px', display: 'flex', alignItems: 'center', gap: 10,
-                cursor: 'pointer', fontSize: 13, transition: 'all 100ms',
-                color: i === activeIndex ? '#e4e8f0' : '#7a8ba8',
-                background: i === activeIndex ? 'rgba(56,140,255,0.1)' : 'transparent',
-              }}>
-              <span style={{ flex: 1 }}>{cmd.label}</span>
-              <span style={{
-                fontSize: 10, color: '#3d5070', padding: '2px 8px', borderRadius: 5,
-                background: 'rgba(56,140,255,0.06)',
-              }}>{cmd.category}</span>
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          onClick={onClose}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(2, 5, 12, 0.55)',
+            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 110, zIndex: 200,
+          }}>
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="glass-strong"
+            style={{
+              width: 560, maxWidth: '92vw', borderRadius: 16, overflow: 'hidden',
+            }}
+            onClick={e => e.stopPropagation()} onKeyDown={handleKey}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)',
+            }}>
+              <Search size={15} color="var(--text-muted)" />
+              <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Type a command or search sessions..."
+                style={{ flex: 1, fontSize: 14, color: 'var(--text-primary)', background: 'transparent' }} />
+              <kbd style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10, padding: '2px 6px', borderRadius: 4,
+                background: 'rgba(140,170,230,0.08)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)',
+              }}>ESC</kbd>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
+            <div style={{ maxHeight: 360, overflowY: 'auto', padding: 6 }}>
+              {filtered.length === 0 && (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No results
+                </div>
+              )}
+              {filtered.map((cmd, i) => {
+                const meta = CATEGORY_META[cmd.category] || CATEGORY_META.App;
+                const Icon = meta.Icon;
+                const active = i === activeIndex;
+                return (
+                  <div key={cmd.id} onClick={() => { cmd.action(); onClose(); }}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    style={{
+                      padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                      cursor: 'pointer', fontSize: 13, borderRadius: 8, position: 'relative',
+                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}>
+                    {active && (
+                      <motion.div layoutId="palette-active"
+                        transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                        style={{
+                          position: 'absolute', inset: 0, borderRadius: 8,
+                          background: 'var(--bg-hover)',
+                          border: '1px solid var(--border-subtle)',
+                        }} />
+                    )}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: `${meta.color}18`,
+                      }}>
+                        <Icon size={13} color={meta.color} />
+                      </div>
+                      <span style={{ flex: 1 }}>{cmd.label}</span>
+                      <span style={{
+                        fontSize: 10, color: 'var(--text-muted)', padding: '2px 8px', borderRadius: 5,
+                        background: 'rgba(140,170,230,0.06)',
+                      }}>{cmd.category}</span>
+                      {active && <CornerDownLeft size={12} color="var(--text-muted)" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

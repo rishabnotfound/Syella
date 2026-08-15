@@ -1,5 +1,6 @@
 {
   "name": "syella",
+  "productName": "Syella",
   "version": "1.0.0",
   "description": "Your portable SSH workstation.",
   "main": "dist/main/main.js",
@@ -16,7 +17,7 @@
     "url": "git+https://github.com/rishabnotfound/Syella.git"
   },
   "author": "rishabnotfound",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "build": {
     "appId": "com.syella.app",
@@ -30,6 +31,19 @@
       "!node_modules/.cache"
     ],
     "extraResources": [],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.developer-tools"
+    },
     "win": {
       "target": [
         {
@@ -46,6 +60,24 @@
         }
       ],
       "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Development"
     },
     "nsis": {
       "oneClick": false,
@@ -64,12 +96,16 @@
   },
   "homepage": "https://github.com/rishabnotfound/Syella#readme",
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "electron": "^43.3.0",
+    "framer-motion": "^13.1.0",
+    "lucide-react": "^1.31.0",
+    "monaco-editor": "^0.56.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sql.js": "^1.14.1",
@@ -86,6 +122,8 @@
     "electron-builder": "^26.15.3",
     "electron-rebuild": "^3.2.9",
     "html-webpack-plugin": "^5.6.8",
+    "monaco-editor-webpack-plugin": "^7.1.1",
+    "png-to-ico": "^3.0.2",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.6.2",
     "typescript": "^5.7.3",

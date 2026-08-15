@@ -1,48 +1,52 @@
 import React from 'react';
+import { Minus, Square, X, Terminal as TerminalIcon } from 'lucide-react';
 
 export default function Titlebar() {
   const send = (ch: string) => window.syella.send(ch);
   return (
-    <div style={{
-      height: 36, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      background: '#0a0e18', borderBottom: '1px solid rgba(56,140,255,0.08)',
-      userSelect: 'none', paddingLeft: 14, paddingRight: 0, flexShrink: 0,
-      // @ts-ignore
-      WebkitAppRegion: 'drag',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img src="assets/logo.png" alt="" style={{ width: 20, height: 20 }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#7a8ba8', letterSpacing: 1.5 }}>SYELLA</span>
-      </div>
-      <div style={{
-        display: 'flex', height: '100%',
-        // @ts-ignore
-        WebkitAppRegion: 'no-drag',
+    <div
+      className="glass drag"
+      style={{
+        height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderBottom: '1px solid var(--border-subtle)',
+        userSelect: 'none', paddingLeft: 14, paddingRight: 0, flexShrink: 0,
+        background: 'linear-gradient(180deg, rgba(15,21,36,0.75), rgba(10,15,26,0.55))',
       }}>
-        <button onClick={() => send('window:minimize')} style={{
-          width: 46, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'none', border: 'none', color: '#5a7090', cursor: 'pointer', fontSize: 16, transition: 'all 150ms',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.1)'; e.currentTarget.style.color = '#e4e8f0'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#5a7090'; }}>
-          <svg width="12" height="1" viewBox="0 0 12 1"><rect width="12" height="1" fill="currentColor"/></svg>
-        </button>
-        <button onClick={() => send('window:maximize')} style={{
-          width: 46, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'none', border: 'none', color: '#5a7090', cursor: 'pointer', fontSize: 16, transition: 'all 150ms',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(56,140,255,0.1)'; e.currentTarget.style.color = '#e4e8f0'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#5a7090'; }}>
-          <svg width="11" height="11" viewBox="0 0 11 11"><rect width="11" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/></svg>
-        </button>
-        <button onClick={() => send('window:close')} style={{
-          width: 46, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'none', border: 'none', color: '#5a7090', cursor: 'pointer', fontSize: 16, transition: 'all 150ms',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#c53030'; e.currentTarget.style.color = '#fff'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#5a7090'; }}>
-          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-        </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          width: 22, height: 22, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--accent-gradient-soft)',
+          border: '1px solid var(--border-medium)',
+        }}>
+          <TerminalIcon size={12} color="var(--accent-light)" />
+        </div>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: 1.8 }}>SYELLA</span>
+      </div>
+      <div className="no-drag" style={{ display: 'flex', height: '100%' }}>
+        {[
+          { icon: Minus, label: 'minimize', act: 'window:minimize' },
+          { icon: Square, label: 'maximize', act: 'window:maximize' },
+          { icon: X, label: 'close', act: 'window:close', danger: true },
+        ].map(btn => {
+          const Icon = btn.icon;
+          return (
+            <button key={btn.act} onClick={() => send(btn.act)}
+              style={{
+                width: 46, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-muted)', transition: 'background 150ms, color 150ms',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = btn.danger ? '#dc2626' : 'rgba(140,170,230,0.08)';
+                e.currentTarget.style.color = btn.danger ? '#fff' : 'var(--text-primary)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-muted)';
+              }}>
+              <Icon size={btn.icon === Square ? 11 : 14} strokeWidth={btn.icon === Square ? 1.6 : 2} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );

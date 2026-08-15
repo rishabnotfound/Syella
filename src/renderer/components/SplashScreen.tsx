@@ -98,7 +98,7 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <div style={{ textAlign: 'center' }}>
-          <img src="assets/logo.png" alt="" style={{
+          <img src="assets/icon.png" alt="" style={{
             width: 72, height: 72, marginBottom: 24,
             filter: 'drop-shadow(0 0 40px rgba(56,140,255,0.4))',
             opacity: phase >= 1 ? 1 : 0,

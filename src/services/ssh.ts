@@ -10,9 +10,22 @@ interface ActiveConnection {
   sftp?: SFTPWrapper;
   sessionId: string;
   tabId: string;
+  cwd?: string;
 }
 
 const connections = new Map<string, ActiveConnection>();
+
+// Bash & zsh init that emits OSC 7 (file://host/pwd) on every prompt.
+// Kept as a single line with explicit ';' between clauses — bash/zsh both need
+// a terminator before then/elif/fi/esac when there are no newlines.
+const CWD_INIT =
+  `__syella_emit_cwd() { printf '\\033]7;file://%s%s\\007' "$(hostname 2>/dev/null)" "$PWD"; }; ` +
+  `if [ -n "$BASH_VERSION" ]; then ` +
+  `  case ";$PROMPT_COMMAND;" in *";__syella_emit_cwd;"*) : ;; *) PROMPT_COMMAND="__syella_emit_cwd;$PROMPT_COMMAND" ;; esac; ` +
+  `elif [ -n "$ZSH_VERSION" ]; then ` +
+  `  autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook precmd __syella_emit_cwd; ` +
+  `fi; ` +
+  `__syella_emit_cwd`;
 
 export function connect(win: BrowserWindow, tabId: string, session: SyeSession, creds: SyeSessionCredentials, cols: number, rows: number): void {
   const client = new Client();
@@ -42,12 +55,81 @@ export function connect(win: BrowserWindow, tabId: string, session: SyeSession, 
       connections.set(tabId, conn);
       win.webContents.send(`ssh:connected:${tabId}`);
 
-      stream.on('data', (data: Buffer) => win.webContents.send(`ssh:data:${tabId}`, data.toString('binary')));
-      stream.stderr.on('data', (data: Buffer) => win.webContents.send(`ssh:data:${tabId}`, data.toString('binary')));
+      const dataChannel = `ssh:data:${tabId}`;
+      const cwdChannel = `ssh:cwd:${tabId}`;
+      let pending: Buffer[] = [];
+      let scheduled = false;
+      let residual: Buffer = Buffer.alloc(0);
+
+      const flush = () => {
+        scheduled = false;
+        if (!pending.length) return;
+        const merged = pending.length === 1 ? pending[0] : Buffer.concat(pending);
+        pending = [];
+        win.webContents.send(dataChannel, merged);
+      };
+      const enqueue = (data: Buffer) => {
+        pending.push(data);
+        if (scheduled) return;
+        scheduled = true;
+        setImmediate(flush);
+      };
+
+      // Strip OSC 7 (ESC ] 7 ; ... BEL | ESC \\) sequences before forwarding,
+      // and emit each cwd we see. Handles split-across-chunks via `residual`.
+      const OSC = 0x1b, BRACKET = 0x5d, BEL = 0x07;
+      const scanAndStrip = (chunk: Buffer) => {
+        const buf = residual.length ? Buffer.concat([residual, chunk]) : chunk;
+        residual = Buffer.alloc(0);
+        let out: Buffer[] = [];
+        let i = 0;
+        while (i < buf.length) {
+          if (buf[i] === OSC && buf[i + 1] === BRACKET) {
+            // find terminator: BEL (0x07) or ST (ESC \\ = 0x1b 0x5c)
+            let end = -1, termLen = 0;
+            for (let j = i + 2; j < buf.length; j++) {
+              if (buf[j] === BEL) { end = j; termLen = 1; break; }
+              if (buf[j] === OSC && buf[j + 1] === 0x5c) { end = j; termLen = 2; break; }
+            }
+            if (end === -1) { residual = buf.slice(i); break; }
+            const payload = buf.slice(i + 2, end).toString('utf8');
+            const m = /^7;file:\/\/[^/]*(\/.*)$/.exec(payload);
+            if (m) {
+              const cwd = decodeURI(m[1]);
+              const c = connections.get(tabId);
+              if (c && c.cwd !== cwd) { c.cwd = cwd; win.webContents.send(cwdChannel, cwd); }
+              // drop the sequence entirely
+              i = end + termLen;
+              continue;
+            }
+            // not OSC 7 — keep it
+            out.push(buf.slice(i, end + termLen));
+            i = end + termLen;
+            continue;
+          }
+          // fast-forward to the NEXT ESC (skip current byte to avoid a spin
+          // when this ESC is not OSC — e.g. CSI colors, cursor moves).
+          let next = buf.indexOf(OSC, i + 1);
+          if (next === -1) next = buf.length;
+          out.push(buf.slice(i, next));
+          i = next;
+        }
+        if (out.length) enqueue(Buffer.concat(out));
+      };
+
+      stream.on('data', scanAndStrip);
+      stream.stderr.on('data', enqueue);
       stream.on('close', () => {
+        flush();
         connections.delete(tabId);
         win.webContents.send(`ssh:disconnected:${tabId}`);
       });
+
+      // Install cwd emitter (idempotent). Wrap in eval so the multi-line snippet
+      // isn't printed. Silently no-ops on shells that don't support it.
+      stream.write(`eval "${CWD_INIT.replace(/"/g, '\\"')}" >/dev/null 2>&1\n`);
+      // Clear the extra prompt echo caused by that command so the banner stays clean.
+      stream.write('clear\n');
 
       if (session.startupCommand) {
         stream.write(session.startupCommand + '\n');
@@ -79,6 +161,10 @@ export function sendData(tabId: string, data: string): void {
 
 export function resize(tabId: string, cols: number, rows: number): void {
   connections.get(tabId)?.shell?.setWindow(rows, cols, 0, 0);
+}
+
+export function getCwd(tabId: string): string | null {
+  return connections.get(tabId)?.cwd || null;
 }
 
 function getSftp(tabId: string): Promise<SFTPWrapper> {
@@ -147,6 +233,34 @@ export async function sftpDownload(win: BrowserWindow, tabId: string, remotePath
     writeStream.on('finish', () => { win.webContents.send('transfer:complete', { id: transferId }); resolve(); });
     readStream.on('error', (err: Error) => { win.webContents.send('transfer:error', { id: transferId, error: err.message }); reject(err); });
     writeStream.on('error', (err: Error) => { win.webContents.send('transfer:error', { id: transferId, error: err.message }); reject(err); });
+  });
+}
+
+export async function sftpReadFile(tabId: string, remotePath: string): Promise<{ data: string; size: number }> {
+  const sftp = await getSftp(tabId);
+  return new Promise((resolve, reject) => {
+    sftp.readFile(remotePath, (err, buf) => {
+      if (err) return reject(err);
+      resolve({ data: buf.toString('base64'), size: buf.length });
+    });
+  });
+}
+
+export async function sftpWriteFile(tabId: string, remotePath: string, base64Data: string): Promise<void> {
+  const sftp = await getSftp(tabId);
+  const buf = Buffer.from(base64Data, 'base64');
+  return new Promise((resolve, reject) => {
+    sftp.writeFile(remotePath, buf, (err) => err ? reject(err) : resolve());
+  });
+}
+
+export async function sftpStat(tabId: string, remotePath: string): Promise<{ size: number; isDirectory: boolean }> {
+  const sftp = await getSftp(tabId);
+  return new Promise((resolve, reject) => {
+    sftp.stat(remotePath, (err, s: any) => {
+      if (err) return reject(err);
+      resolve({ size: s.size, isDirectory: s.isDirectory() });
+    });
   });
 }
 

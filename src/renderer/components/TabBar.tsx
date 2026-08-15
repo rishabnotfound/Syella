@@ -1,68 +1,103 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Plus, Loader2, Wifi, WifiOff, AlertCircle } from 'lucide-react';
 import { SyeTab } from '../../types';
-
-function indicator(status: string): React.CSSProperties {
-  const bg = status === 'connected' ? '#22c55e' : status === 'connecting' ? '#f59e0b' : status === 'error' ? '#ef4444' : '#1a2540';
-  return {
-    width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: bg,
-    boxShadow: status === 'connected' ? '0 0 6px rgba(34,197,94,0.4)' : status === 'connecting' ? '0 0 6px rgba(245,158,11,0.3)' : 'none',
-    animation: status === 'connecting' ? 'pulse 1.5s infinite' : 'none', transition: 'all 300ms',
-  };
-}
 
 interface Props {
   tabs: SyeTab[]; activeTabId: string | null;
   onSelect: (id: string) => void; onClose: (id: string) => void; onNew: () => void;
 }
 
+function StatusDot({ status }: { status: SyeTab['status'] }) {
+  if (status === 'connecting') {
+    return <Loader2 size={11} className="spin" color="var(--warning)" />;
+  }
+  if (status === 'connected') {
+    return (
+      <span style={{ position: 'relative', width: 8, height: 8 }}>
+        <span style={{
+          position: 'absolute', inset: 0, borderRadius: '50%', background: 'var(--success)',
+        }} />
+        <span style={{
+          position: 'absolute', inset: -3, borderRadius: '50%',
+          background: 'rgba(52,211,153,0.25)', animation: 'softPulse 2.4s ease-in-out infinite',
+        }} />
+      </span>
+    );
+  }
+  if (status === 'error') return <AlertCircle size={11} color="var(--danger)" />;
+  return <WifiOff size={11} color="var(--text-faint)" />;
+}
+
 export default function TabBar({ tabs, activeTabId, onSelect, onClose, onNew }: Props) {
   return (
-    <div style={{
-      height: 40, display: 'flex', alignItems: 'stretch', background: '#030810',
-      borderBottom: '1px solid rgba(56,140,255,0.08)', overflow: 'hidden', flexShrink: 0,
-    }}>
-      {tabs.map(tab => {
-        const active = tab.id === activeTabId;
-        return (
-          <div key={tab.id} style={{
-            display: 'flex', alignItems: 'center', gap: 9, padding: '0 18px', fontSize: 12,
-            color: active ? '#e4e8f0' : '#5a7090', cursor: 'pointer',
-            borderRight: '1px solid rgba(56,140,255,0.05)',
-            background: active ? '#000' : 'transparent',
-            transition: 'all 200ms', position: 'relative', maxWidth: 220, minWidth: 110,
-          }}
-            onClick={() => onSelect(tab.id)}
-            onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#060a14'; }}
-            onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
-            <span style={indicator(tab.status)} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontWeight: active ? 500 : 400 }}>
-              {tab.title}
-            </span>
-            <span style={{
-              width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              borderRadius: 5, fontSize: 10, color: '#3d5070', flexShrink: 0, transition: 'all 120ms',
-            }}
-              onClick={e => { e.stopPropagation(); onClose(tab.id); }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.color = '#ef4444'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#3d5070'; }}>
-              ✕
-            </span>
-            {active && <div style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
-              background: 'linear-gradient(90deg, #388CFF, #2060D0)', borderRadius: '2px 2px 0 0',
-            }} />}
-          </div>
-        );
-      })}
-      <div style={{
-        width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#3d5070', cursor: 'pointer', fontSize: 16, transition: 'all 200ms',
-      }}
+    <div
+      className="glass"
+      style={{
+        height: 40, display: 'flex', alignItems: 'stretch',
+        borderBottom: '1px solid var(--border-subtle)',
+        overflow: 'hidden', flexShrink: 0,
+        background: 'linear-gradient(180deg, rgba(15,21,36,0.6), rgba(10,15,26,0.45))',
+      }}>
+      <AnimatePresence initial={false}>
+        {tabs.map(tab => {
+          const active = tab.id === activeTabId;
+          return (
+            <motion.div key={tab.id}
+              layout
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, padding: '0 16px', fontSize: 12,
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer',
+                borderRight: '1px solid var(--border-subtle)',
+                background: active ? 'rgba(90,162,255,0.06)' : 'transparent',
+                position: 'relative', maxWidth: 220, minWidth: 130,
+                overflow: 'hidden',
+              }}
+              onClick={() => onSelect(tab.id)}
+              whileHover={!active ? { backgroundColor: 'rgba(140,170,230,0.04)' } : {}}>
+              <StatusDot status={tab.status} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontWeight: active ? 500 : 400 }}>
+                {tab.title}
+              </span>
+              <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                onClick={e => { e.stopPropagation(); onClose(tab.id); }}
+                style={{
+                  width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 5, color: 'var(--text-muted)', flexShrink: 0,
+                  transition: 'background 120ms, color 120ms',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(248,113,113,0.14)'; e.currentTarget.style.color = 'var(--danger)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                <X size={11} strokeWidth={2.4} />
+              </motion.button>
+              {active && (
+                <motion.div layoutId="tabbar-active-underline"
+                  transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+                  style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
+                    background: 'var(--accent-gradient)',
+                    boxShadow: '0 0 12px rgba(90,162,255,0.35)',
+                  }} />
+              )}
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+      <motion.button
+        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
         onClick={onNew}
-        onMouseEnter={e => { e.currentTarget.style.color = '#388CFF'; e.currentTarget.style.background = 'rgba(56,140,255,0.06)'; }}
-        onMouseLeave={e => { e.currentTarget.style.color = '#3d5070'; e.currentTarget.style.background = 'transparent'; }}>
-        +
-      </div>
+        style={{
+          width: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-muted)', transition: 'background 150ms, color 150ms',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-light)'; e.currentTarget.style.background = 'rgba(90,162,255,0.06)'; }}
+        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
+        <Plus size={14} />
+      </motion.button>
     </div>
   );
 }

@@ -301,13 +301,13 @@ export default function App() {
                   )}
                 </div>
                 {tab.status === 'connected' && (
-                  <SftpPanel
+                  <SftpPanelBinding
                     tabId={tab.id}
                     visible={!!sftpVisible[tab.id]}
-                    onClose={() => setSftpVisible(p => ({ ...p, [tab.id]: false }))}
-                    onOpenFile={(path, size) => setViewerFile({ tabId: tab.id, path, size })}
                     state={sftpState[tab.id]}
-                    onStateChange={(next) => setSftpState(p => ({ ...p, [tab.id]: next }))}
+                    setSftpVisible={setSftpVisible}
+                    setSftpState={setSftpState}
+                    setViewerFile={setViewerFile}
                   />
                 )}
               </div>
@@ -402,5 +402,41 @@ export default function App() {
           onBackupExport={handleBackupExport} onBackupImport={handleBackupImport} />
       )}
     </div>
+  );
+}
+
+// Stable callback binding so SftpPanel doesn't receive fresh function refs
+// every App re-render, which was retriggering its effects in a loop in
+// production builds (React 19 no longer masks this with StrictMode).
+interface SftpBindingProps {
+  tabId: string;
+  visible: boolean;
+  state: { path: string; back: string[] } | undefined;
+  setSftpVisible: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setSftpState: React.Dispatch<React.SetStateAction<Record<string, { path: string; back: string[] }>>>;
+  setViewerFile: React.Dispatch<React.SetStateAction<{ tabId: string; path: string; size: number } | null>>;
+}
+function SftpPanelBinding({ tabId, visible, state, setSftpVisible, setSftpState, setViewerFile }: SftpBindingProps) {
+  const onClose = useCallback(
+    () => setSftpVisible(p => ({ ...p, [tabId]: false })),
+    [tabId, setSftpVisible]
+  );
+  const onOpenFile = useCallback(
+    (path: string, size: number) => setViewerFile({ tabId, path, size }),
+    [tabId, setViewerFile]
+  );
+  const onStateChange = useCallback(
+    (next: { path: string; back: string[] }) => setSftpState(p => ({ ...p, [tabId]: next })),
+    [tabId, setSftpState]
+  );
+  return (
+    <SftpPanel
+      tabId={tabId}
+      visible={visible}
+      state={state}
+      onClose={onClose}
+      onOpenFile={onOpenFile}
+      onStateChange={onStateChange}
+    />
   );
 }

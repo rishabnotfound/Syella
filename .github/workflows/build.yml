@@ -115,6 +115,36 @@ jobs:
           draft: false
           prerelease: ${{ steps.tag.outputs.prerelease }}
           generate_release_notes: true
+          body: |
+            ## Downloads — pick the right build for your machine
+
+            ### macOS
+            | File | For |
+            |---|---|
+            | **`Syella-${{ steps.pkg.outputs.version }}-arm64.dmg`** | Apple Silicon (M1, M2, M3, M4) — **most modern Macs** |
+            | `Syella-${{ steps.pkg.outputs.version }}.dmg` | Intel Macs (pre-2020) |
+
+            > On first open, mount the DMG and **double-click `Install Syella.command`** instead of dragging manually. This handles the macOS quarantine warning automatically. If you drag manually and see *"Syella is damaged"*, run `xattr -cr /Applications/Syella.app` in Terminal and reopen — the app is fine, it's just unsigned.
+
+            ### Windows
+            | File | For |
+            |---|---|
+            | **`Syella.Setup.${{ steps.pkg.outputs.version }}.exe`** | Standard installer — creates Start Menu + desktop shortcuts |
+            | `Syella-Portable-${{ steps.pkg.outputs.version }}.exe` | Portable — single file, no install, runs from anywhere |
+
+            > SmartScreen may warn on first run (unsigned) — click **More info** → **Run anyway**.
+
+            ### Linux
+            | File | For |
+            |---|---|
+            | **`Syella-${{ steps.pkg.outputs.version }}.AppImage`** | Universal — any distro (Ubuntu, Fedora, Arch, etc.). `chmod +x` and run. |
+            | `syella_${{ steps.pkg.outputs.version }}_amd64.deb` | Debian / Ubuntu — `sudo dpkg -i syella_*.deb` |
+
+            ---
+
+            **Not sure which Mac you have?** Click Apple menu → About This Mac. If the chip says *M1/M2/M3/M4/etc.* → **arm64**. If it says *Intel* → the plain `.dmg`.
+
+            ---
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe

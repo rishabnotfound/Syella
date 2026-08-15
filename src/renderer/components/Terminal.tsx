@@ -123,7 +123,17 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     term.loadAddon(new SearchAddon());
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
-    try { term.loadAddon(new WebglAddon()); } catch {}
+
+    // WebGL renderer: if it fails or loses context, dispose and let xterm
+    // fall back to its DOM renderer. Without this, a lost WebGL context
+    // makes xterm busy-loop trying to repaint at 100% CPU on packaged
+    // macOS builds — the "npm start smooth / installed .app melts" bug.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => { webgl.dispose(); });
+      term.loadAddon(webgl);
+    } catch {}
+
     fit.fit();
 
     termRef.current = term;

@@ -1,7 +1,7 @@
 {
   "name": "syella",
   "productName": "Syella",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Your portable SSH workstation.",
   "main": "dist/main/main.js",
   "scripts": {
@@ -44,6 +44,15 @@
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.developer-tools"
+    },
+    "dmg": {
+      "title": "Syella ${version}",
+      "contents": [
+        { "x": 130, "y": 220, "type": "file" },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" },
+        { "x": 270, "y": 380, "type": "file", "path": "build/Install Syella.command" }
+      ],
+      "window": { "width": 540, "height": 480 }
     },
     "win": {
       "target": [

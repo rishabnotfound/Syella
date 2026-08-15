@@ -1,0 +1,7 @@
+tmpclaude-*
+node_modules
+.claude
+dist
+release
+data
+*.log

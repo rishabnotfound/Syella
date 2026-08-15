@@ -25,8 +25,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
 
       - name: Install dependencies
         run: npm ci
@@ -37,20 +49,14 @@ jobs:
       - name: Package (macOS)
         if: matrix.os == 'macos-latest'
         run: npx electron-builder --mac --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         run: npx electron-builder --win --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: npx electron-builder --linux --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -61,7 +67,7 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   release:
     needs: build

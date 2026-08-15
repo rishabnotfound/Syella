@@ -16,6 +16,7 @@ import SplashScreen from './components/SplashScreen';
 import ShortcutsOverlay from './components/ShortcutsOverlay';
 import SnippetsBar from './components/SnippetsBar';
 import FileViewer from './components/FileViewer';
+import QuickConnect from './components/QuickConnect';
 import { useToast } from './components/Toast';
 import { useSessions, useGroups, useSettings, useTabs, useFirstRun } from './hooks';
 import { SyeSession } from '../types';
@@ -31,6 +32,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [showEditor, setShowEditor] = useState<SyeSession | 'new' | null>(null);
   const [showPalette, setShowPalette] = useState(false);
+  const [showQuickConnect, setShowQuickConnect] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
@@ -270,7 +272,7 @@ export default function App() {
           {tabs.length > 0 && (
             <TabBar tabs={tabs} activeTabId={activeTabId}
               onSelect={setActiveTabId} onClose={closeTab}
-              onNew={() => setShowEditor('new')} />
+              onNew={() => setShowQuickConnect(true)} />
           )}
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
             {tabs.map(tab => (
@@ -378,6 +380,13 @@ export default function App() {
         onSettings={() => { setShowPalette(false); setShowSettings(true); }}
         onBackupExport={() => { setShowPalette(false); handleBackupExport(); }}
         onBackupImport={() => { setShowPalette(false); handleBackupImport(); }} />
+
+      <QuickConnect visible={showQuickConnect}
+        sessions={sessions}
+        connectedSessionIds={connectedSessionIds}
+        onClose={() => setShowQuickConnect(false)}
+        onConnect={handleConnect}
+        onNewSession={() => setShowEditor('new')} />
 
       <ShortcutsOverlay visible={showShortcuts} onClose={() => setShowShortcuts(false)} />
 

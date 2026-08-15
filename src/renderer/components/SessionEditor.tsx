@@ -1,26 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  X, Server, User, Lock, KeyRound, Terminal, Zap, Folder, Star, Trash2,
+  Eye, EyeOff, Save, Sparkles, FileKey, Timer, Wifi, StickyNote, Hash,
+} from 'lucide-react';
 import { SyeSession, SyeGroup } from '../../types';
 import { v4 as uuid } from 'uuid';
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 14px', borderRadius: 9,
-  background: 'rgba(56,140,255,0.04)', border: '1px solid rgba(56,140,255,0.1)',
-  color: '#e4e8f0', fontSize: 13, transition: 'all 200ms',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, color: '#5a7090', marginBottom: 5, fontWeight: 600,
-  textTransform: 'uppercase', letterSpacing: 1.2,
-};
-
 interface Props {
-  session?: SyeSession; groups: SyeGroup[];
+  session?: SyeSession;
+  groups: SyeGroup[];
   onSave: (session: SyeSession, password?: string, privateKey?: string, passphrase?: string) => void;
-  onDelete?: (id: string) => void; onClose: () => void;
+  onDelete?: (id: string) => void;
+  onClose: () => void;
 }
+
+type Section = 'identity' | 'auth' | 'advanced';
 
 export default function SessionEditor({ session, groups, onSave, onDelete, onClose }: Props) {
   const isNew = !session;
+  const [section, setSection] = useState<Section>('identity');
   const [name, setName] = useState(session?.name || '');
   const [host, setHost] = useState(session?.host || '');
   const [port, setPort] = useState(session?.port || 22);
@@ -30,11 +29,15 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
   const [favorite, setFavorite] = useState(session?.favorite || false);
   const [notes, setNotes] = useState(session?.notes || '');
   const [keepalive, setKeepalive] = useState(session?.keepalive || 30);
-  const [timeout, setTimeoutVal] = useState(session?.connectionTimeout || 15);
+  const [timeoutVal, setTimeoutVal] = useState(session?.connectionTimeout || 15);
   const [startupCmd, setStartupCmd] = useState(session?.startupCommand || '');
   const [password, setPassword] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (session) {
@@ -42,14 +45,32 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
         if (c) { setPassword(c.password || ''); setPrivateKey(c.privateKey || ''); setPassphrase(c.passphrase || ''); }
       });
     }
+    setTimeout(() => firstInputRef.current?.focus(), 60);
   }, [session]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (host) handleSave();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host, name, port, username, authMethod, group, favorite, notes, keepalive, timeoutVal, startupCmd, password, privateKey, passphrase]);
 
   const handleSave = () => {
     const now = Date.now();
     const s: SyeSession = {
-      id: session?.id || uuid(), name: name || host, host, port, username, authMethod, group,
-      tags: session?.tags || [], favorite, notes, keepalive, connectionTimeout: timeout,
-      startupCommand: startupCmd, proxyJump: session?.proxyJump || '',
+      id: session?.id || uuid(),
+      name: name || host,
+      host, port, username, authMethod, group,
+      tags: session?.tags || [], favorite, notes, keepalive,
+      connectionTimeout: timeoutVal,
+      startupCommand: startupCmd,
+      proxyJump: session?.proxyJump || '',
       createdAt: session?.createdAt || now, updatedAt: now,
     };
     onSave(s, password, privateKey, passphrase);
@@ -63,155 +84,458 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
     if (files?.[0]) setPrivateKey(files[0]);
   };
 
-  const focusStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.currentTarget.style.borderColor = 'rgba(56,140,255,0.3)';
-    e.currentTarget.style.boxShadow = '0 0 12px rgba(56,140,255,0.08)';
-  };
-  const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.currentTarget.style.borderColor = 'rgba(56,140,255,0.1)';
-    e.currentTarget.style.boxShadow = 'none';
-  };
+  const sections: { id: Section; label: string; Icon: React.ComponentType<any>; complete?: boolean }[] = useMemo(() => [
+    { id: 'identity', label: 'Identity', Icon: Server, complete: !!host },
+    { id: 'auth', label: 'Auth', Icon: Lock, complete: authMethod === 'password' ? !!password : !!privateKey },
+    { id: 'advanced', label: 'Advanced', Icon: Sparkles },
+  ], [host, authMethod, password, privateKey]);
+
+  const canSave = !!host;
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-      animation: 'fadeIn 150ms ease-out',
-    }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: 540, maxHeight: '82vh', overflowY: 'auto', background: '#0a1020',
-        border: '1px solid rgba(56,140,255,0.1)', borderRadius: 14, padding: 28,
-        boxShadow: '0 24px 80px rgba(0,0,0,0.5)', animation: 'fadeInScale 200ms ease-out',
-      }}>
-        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 24, color: '#e4e8f0' }}>
-          {isNew ? 'New Session' : `Edit: ${session.name}`}
-        </div>
+    <AnimatePresence>
+      <motion.div
+        key="editor-backdrop"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        transition={{ duration: 0.16 }}
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(2,5,12,0.62)',
+          backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        }}>
+        <motion.div
+          initial={{ opacity: 0, y: 18, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.97 }}
+          transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+          onClick={e => e.stopPropagation()}
+          className="glass-strong"
+          style={{
+            width: 640, maxWidth: '96vw', maxHeight: '90vh',
+            borderRadius: 18, overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
+          }}>
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 2 }}>
-            <label style={labelStyle}>Nickname</label>
-            <input style={inputStyle} value={name} onChange={e => setName(e.target.value)}
-              placeholder="My Server" onFocus={focusStyle} onBlur={blurStyle} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Group</label>
-            <input style={inputStyle} value={group} onChange={e => setGroup(e.target.value)}
-              placeholder="Production" list="groups" onFocus={focusStyle} onBlur={blurStyle} />
-            <datalist id="groups">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 3 }}>
-            <label style={labelStyle}>Host</label>
-            <input style={inputStyle} value={host} onChange={e => setHost(e.target.value)}
-              placeholder="192.168.1.1" onFocus={focusStyle} onBlur={blurStyle} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Port</label>
-            <input style={inputStyle} type="number" value={port} onChange={e => setPort(Number(e.target.value))}
-              onFocus={focusStyle} onBlur={blurStyle} />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Username</label>
-          <input style={inputStyle} value={username} onChange={e => setUsername(e.target.value)}
-            onFocus={focusStyle} onBlur={blurStyle} />
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Authentication</label>
-          <select style={{ ...inputStyle, background: '#0d1525' }} value={authMethod}
-            onChange={e => setAuthMethod(e.target.value as any)} onFocus={focusStyle as any} onBlur={blurStyle as any}>
-            <option value="password">Password</option>
-            <option value="privateKey">Private Key</option>
-          </select>
-        </div>
-
-        {authMethod === 'password' && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Password</label>
-            <input style={inputStyle} type="password" value={password} onChange={e => setPassword(e.target.value)}
-              onFocus={focusStyle} onBlur={blurStyle} />
-          </div>
-        )}
-
-        {authMethod === 'privateKey' && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Private Key</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input style={{ ...inputStyle, flex: 1 }} value={privateKey} onChange={e => setPrivateKey(e.target.value)}
-                  placeholder="Path or paste key" onFocus={focusStyle} onBlur={blurStyle} />
-                <button onClick={browseKey} style={{
-                  padding: '10px 16px', borderRadius: 9, fontSize: 12,
-                  background: 'rgba(56,140,255,0.08)', border: '1px solid rgba(56,140,255,0.15)',
-                  color: '#7a8ba8', transition: 'all 200ms',
-                }}>Browse</button>
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px',
+            borderBottom: '1px solid var(--border-subtle)',
+            background: 'linear-gradient(180deg, rgba(15,21,36,0.65), rgba(10,15,26,0.15))',
+          }}>
+            <motion.div
+              initial={{ rotate: -20, scale: 0.8, opacity: 0 }}
+              animate={{ rotate: 0, scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+              style={{
+                width: 42, height: 42, borderRadius: 12,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--accent-gradient-soft)',
+                border: '1px solid var(--border-medium)',
+              }}>
+              <Server size={18} color="var(--accent-light)" />
+            </motion.div>
+            <div style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: 0.2 }}>
+                {isNew ? 'New Session' : name || 'Untitled'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                {host ? `${username}@${host}:${port}` : 'Configure a new SSH connection'}
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Passphrase</label>
-              <input style={inputStyle} type="password" value={passphrase} onChange={e => setPassphrase(e.target.value)}
-                onFocus={focusStyle} onBlur={blurStyle} />
-            </div>
-          </>
-        )}
-
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Keepalive (s)</label>
-            <input style={inputStyle} type="number" value={keepalive} onChange={e => setKeepalive(Number(e.target.value))}
-              onFocus={focusStyle} onBlur={blurStyle} />
+            <motion.button
+              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }}
+              onClick={() => setFavorite(v => !v)}
+              title={favorite ? 'Unfavorite' : 'Favorite'}
+              style={iconBtnStyle(favorite ? '#fbbf24' : 'var(--text-muted)')}>
+              <Star size={15} fill={favorite ? '#fbbf24' : 'none'} />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }}
+              onClick={onClose} title="Close (Esc)"
+              style={iconBtnStyle('var(--text-muted)')}>
+              <X size={15} />
+            </motion.button>
           </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>Timeout (s)</label>
-            <input style={inputStyle} type="number" value={timeout} onChange={e => setTimeoutVal(Number(e.target.value))}
-              onFocus={focusStyle} onBlur={blurStyle} />
+
+          {/* Section tabs */}
+          <div style={{
+            display: 'flex', gap: 4, padding: '10px 14px 0',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            {sections.map(s => {
+              const active = section === s.id;
+              const Icon = s.Icon;
+              return (
+                <button key={s.id} onClick={() => setSection(s.id)}
+                  style={{
+                    position: 'relative',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    padding: '9px 14px 12px',
+                    fontSize: 12, fontWeight: active ? 600 : 500,
+                    color: active ? 'var(--accent-light)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    transition: 'color 140ms',
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                  <Icon size={12} />
+                  {s.label}
+                  {s.complete && !active && (
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%',
+                      background: 'var(--success)',
+                    }} />
+                  )}
+                  {active && (
+                    <motion.div layoutId="editor-tab-underline"
+                      transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                      style={{
+                        position: 'absolute', bottom: -1, left: 8, right: 8, height: 2,
+                        background: 'var(--accent-gradient)',
+                        borderRadius: 2,
+                      }} />
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Startup Command</label>
-          <input style={inputStyle} value={startupCmd} onChange={e => setStartupCmd(e.target.value)}
-            placeholder="cd /app && clear" onFocus={focusStyle} onBlur={blurStyle} />
-        </div>
+          {/* Body */}
+          <div style={{
+            flex: 1, overflowY: 'auto',
+            padding: '18px 20px 8px',
+            display: 'flex', flexDirection: 'column', gap: 14,
+          }}>
+            <AnimatePresence mode="wait">
+              {section === 'identity' && (
+                <motion.div key="identity" {...sectionMotion} style={sectionColStyle}>
+                  <Row>
+                    <Field label="Nickname" Icon={Hash} flex={2}>
+                      <Input ref={firstInputRef} value={name} onChange={setName} placeholder="Production DB" />
+                    </Field>
+                    <Field label="Group" Icon={Folder} flex={1}>
+                      <Input value={group} onChange={setGroup} placeholder="Production" list="editor-groups" />
+                      <datalist id="editor-groups">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
+                    </Field>
+                  </Row>
+                  <Row>
+                    <Field label="Host" Icon={Server} flex={3}>
+                      <Input value={host} onChange={setHost} placeholder="192.168.1.10 or example.com" mono />
+                    </Field>
+                    <Field label="Port" Icon={null} flex={1}>
+                      <Input type="number" value={String(port)} onChange={v => setPort(Number(v) || 22)} mono />
+                    </Field>
+                  </Row>
+                  <Field label="Username" Icon={User}>
+                    <Input value={username} onChange={setUsername} placeholder="root" mono />
+                  </Field>
+                </motion.div>
+              )}
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Notes</label>
-          <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={notes}
-            onChange={e => setNotes(e.target.value)} onFocus={focusStyle as any} onBlur={blurStyle as any} />
-        </div>
+              {section === 'auth' && (
+                <motion.div key="auth" {...sectionMotion} style={sectionColStyle}>
+                  <div>
+                    <FieldLabel Icon={Lock} label="Authentication method" />
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
+                      padding: 4, borderRadius: 10,
+                      background: 'rgba(140,170,230,0.05)',
+                      border: '1px solid var(--border-subtle)',
+                    }}>
+                      {(['password', 'privateKey'] as const).map(m => {
+                        const active = authMethod === m;
+                        const Icon = m === 'password' ? Lock : KeyRound;
+                        return (
+                          <button key={m} onClick={() => setAuthMethod(m)}
+                            style={{
+                              position: 'relative',
+                              padding: '9px 12px', borderRadius: 7,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                              fontSize: 12, fontWeight: active ? 600 : 500,
+                              color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                              cursor: 'pointer', transition: 'color 140ms',
+                            }}>
+                            {active && (
+                              <motion.div layoutId="auth-toggle-bg"
+                                transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                                style={{
+                                  position: 'absolute', inset: 0, borderRadius: 7,
+                                  background: 'var(--accent-gradient-soft)',
+                                  border: '1px solid rgba(90,162,255,0.28)',
+                                }} />
+                            )}
+                            <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 7 }}>
+                              <Icon size={12} />
+                              {m === 'password' ? 'Password' : 'Private Key'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#7a8ba8', marginBottom: 6 }}
-          onClick={() => setFavorite(!favorite)}>
-          <span style={{ color: favorite ? '#f59e0b' : '#253050', fontSize: 15, transition: 'color 200ms' }}>★</span>
-          Favorite
-        </label>
+                  <AnimatePresence mode="wait">
+                    {authMethod === 'password' ? (
+                      <motion.div key="pw" {...swapMotion} style={sectionColStyle}>
+                        <Field label="Password" Icon={Lock}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <Input flex value={password} onChange={setPassword} type={showPw ? 'text' : 'password'} placeholder="•••••••" />
+                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+                              onClick={() => setShowPw(v => !v)} title={showPw ? 'Hide' : 'Show'}
+                              style={sideBtnStyle}>
+                              {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </motion.button>
+                          </div>
+                        </Field>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="key" {...swapMotion} style={sectionColStyle}>
+                        <Field label="Private Key" Icon={FileKey}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <Input flex value={privateKey} onChange={setPrivateKey} placeholder="/path/to/id_rsa or paste key" mono />
+                            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+                              onClick={browseKey}
+                              style={{ ...sideBtnStyle, width: 'auto', padding: '0 14px', fontSize: 12, fontWeight: 500 }}>
+                              Browse
+                            </motion.button>
+                          </div>
+                        </Field>
+                        <Field label="Passphrase" Icon={KeyRound}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <Input flex value={passphrase} onChange={setPassphrase} type={showPass ? 'text' : 'password'} placeholder="Optional" />
+                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+                              onClick={() => setShowPass(v => !v)} title={showPass ? 'Hide' : 'Show'}
+                              style={sideBtnStyle}>
+                              {showPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </motion.button>
+                          </div>
+                        </Field>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
 
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 18,
-          borderTop: '1px solid rgba(56,140,255,0.06)',
-        }}>
-          {!isNew && onDelete && (
-            <button onClick={() => { if (confirm('Delete this session?')) onDelete(session.id); }}
+              {section === 'advanced' && (
+                <motion.div key="advanced" {...sectionMotion} style={sectionColStyle}>
+                  <Row>
+                    <Field label="Keepalive (s)" Icon={Wifi} flex={1}>
+                      <Input type="number" value={String(keepalive)} onChange={v => setKeepalive(Number(v) || 0)} mono />
+                    </Field>
+                    <Field label="Timeout (s)" Icon={Timer} flex={1}>
+                      <Input type="number" value={String(timeoutVal)} onChange={v => setTimeoutVal(Number(v) || 0)} mono />
+                    </Field>
+                  </Row>
+                  <Field label="Startup command" Icon={Terminal}>
+                    <Input value={startupCmd} onChange={setStartupCmd} placeholder="cd /app && ls" mono />
+                  </Field>
+                  <Field label="Notes" Icon={StickyNote}>
+                    <textarea
+                      value={notes} onChange={e => setNotes(e.target.value)}
+                      placeholder="Anything worth remembering…"
+                      style={{
+                        ...inputStyleObj, minHeight: 72, resize: 'vertical', fontFamily: 'inherit',
+                      }} />
+                  </Field>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            padding: '12px 20px',
+            borderTop: '1px solid var(--border-subtle)',
+            background: 'linear-gradient(180deg, rgba(10,15,26,0.15), rgba(10,15,26,0.5))',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            {!isNew && onDelete && (
+              <AnimatePresence mode="wait">
+                {confirmDelete ? (
+                  <motion.div key="conf"
+                    initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 500 }}>Delete?</span>
+                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                      onClick={() => onDelete(session!.id)}
+                      style={{
+                        padding: '6px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 600,
+                        background: 'var(--danger)', color: '#fff', border: '1px solid var(--danger)',
+                      }}>Yes, delete</motion.button>
+                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                      onClick={() => setConfirmDelete(false)}
+                      style={{
+                        padding: '6px 12px', borderRadius: 7, fontSize: 11.5, color: 'var(--text-muted)',
+                        background: 'transparent', border: '1px solid var(--border-subtle)',
+                      }}>No</motion.button>
+                  </motion.div>
+                ) : (
+                  <motion.button key="del"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                    onClick={() => setConfirmDelete(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '7px 13px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                      background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
+                      color: 'var(--danger)',
+                    }}>
+                    <Trash2 size={12} /> Delete
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            )}
+            <div style={{ flex: 1 }} />
+            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+              onClick={onClose}
               style={{
-                padding: '9px 18px', borderRadius: 9, fontSize: 13, fontWeight: 500, marginRight: 'auto',
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444',
-              }}>Delete</button>
-          )}
-          <button onClick={onClose} style={{
-            padding: '9px 20px', borderRadius: 9, fontSize: 13, fontWeight: 500,
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(56,140,255,0.08)', color: '#7a8ba8',
-          }}>Cancel</button>
-          <button onClick={handleSave} disabled={!host} style={{
-            padding: '9px 24px', borderRadius: 9, fontSize: 13, fontWeight: 500,
-            background: host ? 'linear-gradient(135deg, #388CFF, #2060D0)' : '#152540',
-            color: host ? '#fff' : '#3d5070', transition: 'all 200ms',
-          }}>{isNew ? 'Create' : 'Save'}</button>
-        </div>
-      </div>
+                padding: '8px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 500,
+                background: 'transparent', border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)',
+              }}>
+              Cancel
+            </motion.button>
+            <motion.button whileHover={canSave ? { y: -1, scale: 1.01 } : {}} whileTap={canSave ? { scale: 0.98 } : {}}
+              onClick={handleSave}
+              disabled={!canSave}
+              style={{
+                padding: '8px 18px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 7,
+                background: canSave ? 'var(--accent-gradient)' : 'rgba(140,170,230,0.06)',
+                color: canSave ? '#fff' : 'var(--text-muted)',
+                border: canSave ? '1px solid rgba(90,162,255,0.4)' : '1px solid var(--border-subtle)',
+                opacity: canSave ? 1 : 0.6,
+                cursor: canSave ? 'pointer' : 'default',
+                boxShadow: canSave ? '0 6px 22px rgba(90,162,255,0.28)' : 'none',
+              }}>
+              {isNew ? <Zap size={13} /> : <Save size={13} />}
+              {isNew ? 'Create session' : 'Save changes'}
+              <kbd style={{
+                fontFamily: 'var(--font-mono)', fontSize: 9.5, padding: '1px 5px', borderRadius: 3,
+                background: 'rgba(255,255,255,0.15)',
+                color: canSave ? 'rgba(255,255,255,0.85)' : 'var(--text-faint)',
+              }}>⌘↵</kbd>
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+const inputStyleObj: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8,
+  background: 'rgba(140,170,230,0.05)',
+  border: '1px solid var(--border-subtle)',
+  color: 'var(--text-primary)', fontSize: 12.5,
+  outline: 'none', transition: 'border-color 150ms, background 150ms, box-shadow 150ms',
+};
+
+const sideBtnStyle: React.CSSProperties = {
+  width: 34, height: 34, borderRadius: 8,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  color: 'var(--text-muted)',
+  background: 'rgba(140,170,230,0.05)',
+  border: '1px solid var(--border-subtle)',
+  cursor: 'pointer', transition: 'color 120ms, background 120ms',
+};
+
+const sectionColStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14 };
+
+const sectionMotion = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -6 },
+  transition: { duration: 0.18 },
+};
+
+const swapMotion = {
+  initial: { opacity: 0, y: 4 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -4 },
+  transition: { duration: 0.14 },
+};
+
+function iconBtnStyle(color: string): React.CSSProperties {
+  return {
+    width: 30, height: 30, borderRadius: 8, display: 'flex',
+    alignItems: 'center', justifyContent: 'center', color,
+    background: 'transparent', border: '1px solid var(--border-subtle)',
+    cursor: 'pointer', transition: 'background 120ms, color 120ms',
+  };
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', gap: 10 }}>{children}</div>;
+}
+
+function FieldLabel({ Icon, label }: { Icon: React.ComponentType<any> | null; label: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5,
+      fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.2,
+      color: 'var(--text-muted)',
+    }}>
+      {Icon && <Icon size={11} />}
+      {label}
     </div>
   );
 }
+
+function Field({
+  label, Icon, children, flex,
+}: {
+  label: string;
+  Icon: React.ComponentType<any> | null;
+  children: React.ReactNode;
+  flex?: number;
+}) {
+  return (
+    <div style={{ flex, minWidth: 0 }}>
+      <FieldLabel Icon={Icon} label={label} />
+      {children}
+    </div>
+  );
+}
+
+interface InputProps {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  list?: string;
+  mono?: boolean;
+  flex?: boolean;
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
+  { value, onChange, placeholder, type = 'text', list, mono, flex }, ref
+) {
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      type={type}
+      list={list}
+      style={{
+        ...inputStyleObj,
+        flex: flex ? 1 : undefined,
+        fontFamily: mono ? 'var(--font-mono)' : 'inherit',
+      }}
+      onFocus={e => {
+        e.currentTarget.style.borderColor = 'rgba(90,162,255,0.4)';
+        e.currentTarget.style.background = 'rgba(90,162,255,0.06)';
+        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(90,162,255,0.1)';
+      }}
+      onBlur={e => {
+        e.currentTarget.style.borderColor = 'var(--border-subtle)';
+        e.currentTarget.style.background = 'rgba(140,170,230,0.05)';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    />
+  );
+});

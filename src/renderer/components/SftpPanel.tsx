@@ -3,13 +3,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import {
   Folder, FileText, Download, Trash2, Upload, FolderPlus, FilePlus, ArrowLeft,
-  RefreshCw, X, ChevronRight, Eye, EyeOff, Home, MoreVertical, Edit3,
+  RefreshCw, X, ChevronRight, Eye, EyeOff, Home, MoreVertical, Edit3, FolderUp, CheckCircle2, AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { SyeSftpEntry } from '../../types';
 import InputModal from './InputModal';
+import { registerUpload, useTabUploads, dismissUpload } from '../uploadStore';
+import type { UploadState } from '../uploadStore';
 
 const PANEL_BG = 'rgba(10, 15, 26, 0.96)';
-const CURVE_WIDTH = 90;
+// Soft gradient mask that fades from transparent (over the terminal) into the
+// panel edge. Replaces the old opaque SVG "curve" that painted a big dark bar
+// over the terminal — that looked like a broken layout, not decoration.
+const EDGE_MASK_WIDTH = 28;
 
 export interface SftpState { path: string; back: string[]; }
 
@@ -32,6 +38,18 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)} GB`;
 }
 
+function Loader2Spin() {
+  return <Loader2 size={22} color="var(--danger)" className="spin" />;
+}
+
+function formatDuration(sec: number): string {
+  if (sec < 60) return `${Math.ceil(sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.ceil(sec % 60)}s`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
@@ -40,23 +58,16 @@ function join(dir: string, name: string): string {
   return dir === '/' ? `/${name}` : `${dir}/${name}`;
 }
 
-function Curve({ height }: { height: number }) {
-  const initialPath = `M${CURVE_WIDTH} 0 L${CURVE_WIDTH * 2} 0 L${CURVE_WIDTH * 2} ${height} L${CURVE_WIDTH} ${height} Q${-CURVE_WIDTH} ${height / 2} ${CURVE_WIDTH} 0`;
-  const targetPath = `M${CURVE_WIDTH} 0 L${CURVE_WIDTH * 2} 0 L${CURVE_WIDTH * 2} ${height} L${CURVE_WIDTH} ${height} Q${CURVE_WIDTH} ${height / 2} ${CURVE_WIDTH} 0`;
+function EdgeMask() {
   return (
-    <svg
+    <div
+      aria-hidden
       style={{
-        position: 'absolute', top: 0, left: -CURVE_WIDTH, height: '100%', width: CURVE_WIDTH,
+        position: 'absolute', top: 0, left: -EDGE_MASK_WIDTH, height: '100%', width: EDGE_MASK_WIDTH,
         pointerEvents: 'none', zIndex: 0,
+        background: 'linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,0.35))',
       }}
-      preserveAspectRatio="none"
-      viewBox={`${CURVE_WIDTH} 0 ${CURVE_WIDTH} ${height}`}>
-      <motion.path
-        initial={{ d: initialPath }}
-        animate={{ d: targetPath, transition: { duration: 0.9, ease: EASE } }}
-        exit={{ d: initialPath, transition: { duration: 0.7, ease: EASE } }}
-        fill={PANEL_BG} />
-    </svg>
+    />
   );
 }
 
@@ -105,7 +116,7 @@ function IconBtn({ Icon, title, onClick, danger, primary, disabled }: {
   const color = disabled ? 'var(--text-faint)' : danger ? 'var(--danger)' : primary ? 'var(--accent-light)' : 'var(--text-muted)';
   return (
     <motion.button
-      whileHover={disabled ? {} : { scale: 1.06 }} whileTap={disabled ? {} : { scale: 0.92 }}
+ whileTap={disabled ? {} : { scale: 0.92 }}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       title={title}
@@ -210,10 +221,10 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
   const [mkModal, setMkModal] = useState<{ kind: 'folder' | 'file' } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerHeight, setContainerHeight] = useState<number>(800);
   const initRef = useRef<Set<string>>(new Set());
   const activeLoadRef = useRef<string | null>(null);
   const dragCounterRef = useRef(0);
+  const uploads = useTabUploads(tabId);
 
   const loadDir = useCallback(async (dir: string) => {
     if (!dir) return;
@@ -254,19 +265,6 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
     if (visible && path) loadDir(path);
   }, [path, visible, loadDir]);
 
-  useEffect(() => {
-    if (!visible) return;
-    const measure = () => {
-      const h = containerRef.current?.parentElement?.getBoundingClientRect().height;
-      if (h) setContainerHeight(h);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current?.parentElement) ro.observe(containerRef.current.parentElement);
-    window.addEventListener('resize', measure);
-    return () => { window.removeEventListener('resize', measure); ro.disconnect(); };
-  }, [visible]);
-
   const navigate = (dir: string) => {
     if (!path || dir === path) return;
     onStateChange({ path: dir, back: [...back, path].slice(-50) });
@@ -289,12 +287,28 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
     else if (entry.type === 'file') onOpenFile?.(full, entry.size);
   };
 
+  const [deleting, setDeleting] = useState<{ name: string; removed: number; currentPath: string } | null>(null);
+
+  useEffect(() => {
+    const off = window.syella.on('sftp:deleteProgress', (p: any) => {
+      if (!p || p.tabId !== tabId) return;
+      if (p.done) { setDeleting(null); return; }
+      setDeleting(prev => prev ? { ...prev, removed: p.removed || 0, currentPath: p.path || prev.currentPath } : prev);
+    });
+    return () => { off(); };
+  }, [tabId]);
+
   const handleDelete = async (entry: SyeSftpEntry) => {
     const full = join(path, entry.name);
+    const opId = crypto.randomUUID();
+    if (entry.type === 'directory') {
+      setDeleting({ name: entry.name, removed: 0, currentPath: full });
+    }
     try {
-      await window.syella.invoke('sftp:delete', tabId, full, entry.type === 'directory');
+      await window.syella.invoke('sftp:delete', tabId, full, entry.type === 'directory', opId);
       loadDir(path);
     } catch (e: any) { setError(e.message || 'Delete failed'); }
+    finally { setDeleting(null); }
   };
 
   const handleDownload = async (entry: SyeSftpEntry) => {
@@ -304,23 +318,36 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
   };
 
   const uploadLocalPaths = useCallback(async (paths: string[]) => {
-    for (const f of paths) {
-      const name = f.split(/[\\/]/).pop();
-      if (!name) continue;
-      const remote = join(path, name);
-      try {
-        await window.syella.invoke('sftp:upload', tabId, f, remote, crypto.randomUUID());
-      } catch (e: any) {
-        setError(e.message || `Upload failed: ${name}`);
-      }
+    if (!paths.length || !path) return;
+    const batchId = crypto.randomUUID();
+    registerUpload(tabId, batchId);
+    try {
+      await window.syella.invoke('sftp:uploadPaths', tabId, path, paths, batchId);
+    } catch {
+      // Errors are already broadcast via transfer:error IPC to the store.
     }
     loadDir(path);
   }, [tabId, path, loadDir]);
 
+  const handleCancelUpload = useCallback((batchId: string) => {
+    window.syella.invoke('sftp:cancelUpload', batchId);
+  }, []);
+
   const handleUpload = async () => {
-    const files = await window.syella.invoke('dialog:openFile', { properties: ['openFile', 'multiSelections'] });
+    // multiSelections + treatPackageAsDirectory lets us pick many files at
+    // once. For folders users should drag-drop (macOS file picker can't do
+    // both files and folders in one dialog).
+    const files = await window.syella.invoke('dialog:openFile', {
+      properties: ['openFile', 'multiSelections'],
+    });
     if (!files) return;
     uploadLocalPaths(files as string[]);
+  };
+
+  const handleUploadFolder = async () => {
+    const dir = await window.syella.invoke('dialog:openDirectory');
+    if (!dir) return;
+    uploadLocalPaths([dir as string]);
   };
 
   const handleMkdirConfirm = async (name: string) => {
@@ -376,17 +403,24 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
     e.preventDefault();
     dragCounterRef.current = 0;
     setDragOver(false);
-    const list = e.dataTransfer?.files;
-    if (!list || !list.length) return;
+    // Iterate items rather than .files so directories are included — Chromium
+    // omits folders from dataTransfer.files, but items[i].getAsFile() returns
+    // a File for both, and Electron's webUtils.getPathForFile gives us the
+    // absolute disk path either way. Main process handles the recursion.
+    const items = e.dataTransfer?.items;
     const paths: string[] = [];
-    for (let i = 0; i < list.length; i++) {
-      const f = list.item(i);
-      if (!f) continue;
-      const p = (f as any).path || window.syella.getPathForFile?.(f);
-      if (p) paths.push(p);
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind !== 'file') continue;
+        const f = it.getAsFile();
+        if (!f) continue;
+        const p = (f as any).path || window.syella.getPathForFile?.(f);
+        if (p) paths.push(p);
+      }
     }
     if (paths.length) uploadLocalPaths(paths);
-    else setError('Could not read dropped file path.');
+    else setError('Could not read dropped item paths.');
   };
 
   const openRowMenu = (e: React.MouseEvent, entry: SyeSftpEntry) => {
@@ -400,15 +434,39 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
     [entries, showHidden]
   );
 
+  // A single aggregate is easier to reason about than N per-batch bars — the
+  // overlay is a modal "you're busy" indicator, not a transfer manager. If the
+  // user kicks off multiple drops we still show one blocking screen with
+  // combined counters, and it clears as soon as everything is done.
+  const uploadEntries = Object.entries(uploads);
+  const activeUploads = uploadEntries.filter(([, u]) => !u.done);
+  const hasActiveUpload = activeUploads.length > 0;
+  const uploadAggregate = useMemo(() => {
+    if (!uploadEntries.length) return null;
+    let totalFiles = 0, doneFiles = 0, transferred = 0;
+    let currentName = '';
+    let errored = false, cancelled = false;
+    for (const [, u] of uploadEntries) {
+      totalFiles += u.totalFiles || 0;
+      doneFiles += u.doneFiles || 0;
+      transferred += u.transferred || 0;
+      if (!currentName && u.currentName && !u.done) currentName = u.currentName;
+      if (u.error) errored = true;
+      if (u.cancelled) cancelled = true;
+    }
+    const allDone = uploadEntries.every(([, u]) => u.done);
+    return { totalFiles, doneFiles, transferred, currentName, errored, cancelled, allDone };
+  }, [uploadEntries]);
+
   return (
     <>
       <AnimatePresence>
         {visible && (
           <motion.div
             ref={containerRef}
-            initial={{ x: width + CURVE_WIDTH + 20 }}
-            animate={{ x: 0, transition: { duration: 0.85, ease: EASE } }}
-            exit={{ x: width + CURVE_WIDTH + 20, transition: { duration: 0.7, ease: EASE } }}
+            initial={{ x: width + 20 }}
+            animate={{ x: 0, transition: { duration: 0.55, ease: EASE } }}
+            exit={{ x: width + 20, transition: { duration: 0.45, ease: EASE } }}
             onDragEnter={onDragEnter}
             onDragLeave={onDragLeave}
             onDragOver={onDragOverEvt}
@@ -420,7 +478,7 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
               borderLeft: '1px solid var(--border-subtle)',
               willChange: 'transform',
             }}>
-            <Curve height={containerHeight} />
+            <EdgeMask />
 
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', zIndex: 1 }}>
               <div style={{
@@ -454,7 +512,8 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
                 <div style={{ flex: 1 }} />
                 <IconBtn Icon={FilePlus} title="New file" onClick={() => setMkModal({ kind: 'file' })} />
                 <IconBtn Icon={FolderPlus} title="New folder" onClick={() => setMkModal({ kind: 'folder' })} />
-                <IconBtn Icon={Upload} title="Upload files" onClick={handleUpload} primary />
+                <IconBtn Icon={FolderUp} title="Upload folder" onClick={handleUploadFolder} />
+                <IconBtn Icon={Upload} title="Upload files (or drag & drop)" onClick={handleUpload} primary />
               </div>
 
               <Breadcrumbs path={path || '/'} onNavigate={jumpTo} />
@@ -550,7 +609,7 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
                             {formatDate(entry.modifyTime)}
                           </span>
                           <motion.button
-                            whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+ whileTap={{ scale: 0.9 }}
                             onClick={(e) => openRowMenu(e, entry)}
                             style={{
                               width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -566,6 +625,37 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
                     })}
                   </AnimatePresence>
                 )}
+
+                <AnimatePresence>
+                  {deleting && (
+                    <motion.div
+                      key="deleting"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      style={{
+                        position: 'absolute', inset: 6, borderRadius: 12,
+                        border: '1px solid rgba(248,113,113,0.35)',
+                        background: 'rgba(20, 8, 12, 0.85)',
+                        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        gap: 10, padding: 20, textAlign: 'center',
+                      }}>
+                      <Loader2Spin />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
+                        Deleting {deleting.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {deleting.removed} item{deleting.removed === 1 ? '' : 's'} removed
+                      </div>
+                      <div style={{
+                        fontSize: 10, color: 'var(--text-faint)', fontFamily: 'var(--font-mono)',
+                        maxWidth: '92%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {deleting.currentPath}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <AnimatePresence>
                   {dragOver && (
@@ -587,6 +677,130 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
                 </AnimatePresence>
               </div>
             </div>
+
+            <AnimatePresence>
+              {uploadAggregate && (
+                <motion.div
+                  key="upload-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  style={{
+                    position: 'absolute', inset: 0, zIndex: 20,
+                    background: 'rgba(8, 12, 22, 0.92)',
+                    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    gap: 18, padding: 24, textAlign: 'center',
+                  }}>
+                  {uploadAggregate.errored ? (
+                    <AlertCircle size={30} color="var(--danger)" />
+                  ) : uploadAggregate.cancelled && uploadAggregate.allDone ? (
+                    <AlertCircle size={30} color="var(--danger)" />
+                  ) : uploadAggregate.allDone ? (
+                    <CheckCircle2 size={30} color="var(--success)" />
+                  ) : (
+                    <Loader2 size={30} color="var(--accent-light)" className="spin" />
+                  )}
+
+                  <div style={{
+                    fontSize: 14, fontWeight: 600,
+                    color: uploadAggregate.errored ? 'var(--danger)'
+                      : uploadAggregate.allDone && uploadAggregate.cancelled ? 'var(--danger)'
+                      : uploadAggregate.allDone ? 'var(--success)'
+                      : 'var(--text-primary)',
+                    letterSpacing: 0.3,
+                  }}>
+                    {uploadAggregate.errored ? 'Upload failed'
+                      : uploadAggregate.allDone && uploadAggregate.cancelled ? 'Upload cancelled'
+                      : uploadAggregate.allDone ? 'Upload complete'
+                      : 'Uploading…'}
+                  </div>
+
+                  {!uploadAggregate.allDone && uploadAggregate.currentName && (
+                    <div style={{
+                      fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)',
+                      maxWidth: '88%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {uploadAggregate.currentName}
+                    </div>
+                  )}
+
+                  <div style={{
+                    position: 'relative', width: '78%', height: 5, borderRadius: 3, overflow: 'hidden',
+                    background: uploadAggregate.errored || (uploadAggregate.cancelled && uploadAggregate.allDone)
+                      ? 'rgba(248,113,113,0.14)'
+                      : uploadAggregate.allDone ? 'rgba(52,211,153,0.14)'
+                      : 'rgba(90,162,255,0.12)',
+                  }}>
+                    {uploadAggregate.allDone ? (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        background: uploadAggregate.errored || uploadAggregate.cancelled
+                          ? 'var(--danger)' : 'var(--success)',
+                      }} />
+                    ) : (
+                      <div className="march" style={{
+                        position: 'absolute', top: 0, left: 0, bottom: 0, width: '40%',
+                        background: 'linear-gradient(90deg, transparent, var(--accent-light), transparent)',
+                        willChange: 'transform',
+                      }} />
+                    )}
+                  </div>
+
+                  <div style={{
+                    display: 'flex', gap: 14, fontSize: 11, color: 'var(--text-faint)',
+                    fontFamily: 'var(--font-mono)',
+                  }}>
+                    {uploadAggregate.totalFiles > 0 && (
+                      <span>{uploadAggregate.doneFiles}/{uploadAggregate.totalFiles} files</span>
+                    )}
+                    {uploadAggregate.transferred > 0 && (
+                      <span>{formatSize(uploadAggregate.transferred)} moved</span>
+                    )}
+                  </div>
+
+                  {hasActiveUpload && (
+                    <motion.button
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => activeUploads.forEach(([id]) => handleCancelUpload(id))}
+                      style={{
+                        marginTop: 4, padding: '7px 16px', fontSize: 11.5, fontWeight: 500,
+                        color: 'var(--danger)', background: 'rgba(248,113,113,0.08)',
+                        border: '1px solid rgba(248,113,113,0.3)', borderRadius: 7,
+                        cursor: 'pointer', letterSpacing: 0.3,
+                        transition: 'background 120ms, border-color 120ms',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(248,113,113,0.18)';
+                        e.currentTarget.style.borderColor = 'rgba(248,113,113,0.5)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'rgba(248,113,113,0.08)';
+                        e.currentTarget.style.borderColor = 'rgba(248,113,113,0.3)';
+                      }}>
+                      Cancel upload
+                    </motion.button>
+                  )}
+
+                  {uploadAggregate.allDone && (
+                    <motion.button
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => uploadEntries.forEach(([id]) => dismissUpload(tabId, id))}
+                      style={{
+                        marginTop: 4, padding: '7px 16px', fontSize: 11.5, fontWeight: 500,
+                        color: 'var(--text-secondary)', background: 'transparent',
+                        border: '1px solid var(--border-subtle)', borderRadius: 7,
+                        cursor: 'pointer', letterSpacing: 0.3,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                      Dismiss
+                    </motion.button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
@@ -620,5 +834,86 @@ export default function SftpPanel({ tabId, visible, onClose, onOpenFile, state, 
         onCancel={() => setMkModal(null)}
       />
     </>
+  );
+}
+
+// The upload UI intentionally does NOT rely on a byte-percentage bar. That
+// was the source of the "progress stuck at 0%" bug — throttled IPC could
+// deliver the first payload late while the transfer already finished, leaving
+// the width at 0. Instead we show a marching bar that's always animating while
+// active, plus whatever coarse counters we do have (files done, bytes moved).
+// The user sees liveness even in the worst-case IPC delivery scenario.
+function UploadRow({ u, onCancel }: { u: UploadState; onCancel: () => void }) {
+  const active = !u.done;
+  const done = u.done && !u.error && !u.cancelled;
+  const label = u.cancelled ? 'Upload cancelled'
+    : u.error ? u.error
+    : done
+      ? `Uploaded${u.totalFiles ? ` ${u.totalFiles} file${u.totalFiles === 1 ? '' : 's'}` : ''}`
+      : (u.currentName || 'Preparing upload…');
+  const trackBg = done ? 'rgba(52,211,153,0.14)' : (u.error || u.cancelled) ? 'rgba(248,113,113,0.14)' : 'rgba(90,162,255,0.10)';
+  const barColor = done ? 'var(--success)' : (u.error || u.cancelled) ? 'var(--danger)' : 'var(--accent-light)';
+
+  const parts: string[] = [];
+  if (u.totalFiles > 1) parts.push(`${u.doneFiles}/${u.totalFiles} files`);
+  if (u.transferred > 0) parts.push(`${formatSize(u.transferred)} moved`);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
+        {u.error || u.cancelled ? <AlertCircle size={12} color="var(--danger)" />
+          : done ? <CheckCircle2 size={12} color="var(--success)" />
+          : <Upload size={12} color="var(--accent-light)" />}
+        <span style={{
+          flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: (u.error || u.cancelled) ? 'var(--danger)' : 'var(--text-secondary)',
+          fontWeight: 500,
+        }}>
+          {label}
+        </span>
+        {active && (
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={onCancel}
+            title="Cancel upload"
+            style={{
+              width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 5, color: 'var(--text-muted)',
+              background: 'transparent', border: '1px solid var(--border-subtle)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(248,113,113,0.14)'; e.currentTarget.style.color = 'var(--danger)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+            <X size={11} />
+          </motion.button>
+        )}
+      </div>
+
+      <div style={{
+        position: 'relative', height: 4, borderRadius: 2, overflow: 'hidden',
+        background: trackBg,
+      }}>
+        {active ? (
+          <div className="march" style={{
+            position: 'absolute', top: 0, left: 0, bottom: 0, width: '40%',
+            background: `linear-gradient(90deg, transparent, ${barColor}, transparent)`,
+            willChange: 'transform',
+          }} />
+        ) : (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, bottom: 0, width: '100%',
+            background: barColor,
+          }} />
+        )}
+      </div>
+
+      {parts.length > 0 && (
+        <div style={{
+          display: 'flex', gap: 8, fontSize: 10.5, color: 'var(--text-faint)',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {parts.map((p, i) => <span key={i}>{p}</span>)}
+        </div>
+      )}
+    </div>
   );
 }

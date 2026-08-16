@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS: SyeSettings = {
     scrollback: 10000, copyOnSelect: false, bellStyle: 'none',
   },
   ssh: { defaultPort: 22, keepalive: 30, connectionTimeout: 15 },
-  security: { autoLockMinutes: 0, clearClipboardSeconds: 0 },
+  security: { autoLockMinutes: 0, clearClipboardSeconds: 0, stealthConnect: false },
   general: { accentColor: '#388CFF', transparency: 0.15, confirmBeforeClose: true, restoreTabsOnStart: false },
 };
 
@@ -80,6 +80,8 @@ export async function initDatabase(dataPath: string): Promise<void> {
       tags TEXT DEFAULT '[]', favorite INTEGER DEFAULT 0, notes TEXT DEFAULT '',
       keepalive INTEGER DEFAULT 30, connectionTimeout INTEGER DEFAULT 15,
       startupCommand TEXT DEFAULT '', proxyJump TEXT DEFAULT '',
+      provider TEXT DEFAULT '', costAmount REAL DEFAULT NULL, costCurrency TEXT DEFAULT '',
+      costPeriod TEXT DEFAULT '', expiresAt INTEGER DEFAULT NULL,
       createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS credentials (
@@ -92,6 +94,18 @@ export async function initDatabase(dataPath: string): Promise<void> {
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
+
+  // Additive migration for pre-existing DBs — try/catch swallows the "duplicate
+  // column" error on subsequent boots. Cheaper than a version table.
+  for (const col of [
+    'provider TEXT DEFAULT \'\'',
+    'costAmount REAL DEFAULT NULL',
+    'costCurrency TEXT DEFAULT \'\'',
+    'costPeriod TEXT DEFAULT \'\'',
+    'expiresAt INTEGER DEFAULT NULL',
+  ]) {
+    try { db.run(`ALTER TABLE sessions ADD COLUMN ${col}`); } catch {}
+  }
 
   const existing = db.exec('SELECT value FROM settings WHERE key = ?', ['app']);
   if (!existing.length || !existing[0].values.length) {
@@ -116,24 +130,37 @@ function queryOne(sql: string, params: any[] = []): any | undefined {
   return rows[0];
 }
 
+function hydrateSession(r: any): SyeSession {
+  return {
+    ...r,
+    tags: JSON.parse(r.tags),
+    favorite: !!r.favorite,
+    provider: r.provider || undefined,
+    costAmount: r.costAmount ?? undefined,
+    costCurrency: r.costCurrency || undefined,
+    costPeriod: r.costPeriod || undefined,
+    expiresAt: r.expiresAt ?? undefined,
+  };
+}
+
 export function getSessions(): SyeSession[] {
-  return queryAll('SELECT * FROM sessions ORDER BY name').map(r => ({
-    ...r, tags: JSON.parse(r.tags), favorite: !!r.favorite,
-  }));
+  return queryAll('SELECT * FROM sessions ORDER BY name').map(hydrateSession);
 }
 
 export function getSession(id: string): SyeSession | undefined {
   const r = queryOne('SELECT * FROM sessions WHERE id = ?', [id]);
   if (!r) return undefined;
-  return { ...r, tags: JSON.parse(r.tags), favorite: !!r.favorite };
+  return hydrateSession(r);
 }
 
 export function saveSession(session: SyeSession): void {
   db.run(
-    `INSERT OR REPLACE INTO sessions (id, name, host, port, username, authMethod, "group", tags, favorite, notes, keepalive, connectionTimeout, startupCommand, proxyJump, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO sessions (id, name, host, port, username, authMethod, "group", tags, favorite, notes, keepalive, connectionTimeout, startupCommand, proxyJump, provider, costAmount, costCurrency, costPeriod, expiresAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [session.id, session.name, session.host, session.port, session.username, session.authMethod,
      session.group, JSON.stringify(session.tags), session.favorite ? 1 : 0, session.notes,
      session.keepalive, session.connectionTimeout, session.startupCommand, session.proxyJump,
+     session.provider || '', session.costAmount ?? null, session.costCurrency || '',
+     session.costPeriod || '', session.expiresAt ?? null,
      session.createdAt, session.updatedAt]
   );
   persist();
@@ -178,7 +205,16 @@ export function deleteGroup(id: string): void {
 
 export function getSettings(): SyeSettings {
   const r = queryOne('SELECT value FROM settings WHERE key = ?', ['app']);
-  return r ? JSON.parse(r.value) : DEFAULT_SETTINGS;
+  if (!r) return DEFAULT_SETTINGS;
+  const stored = JSON.parse(r.value) as Partial<SyeSettings>;
+  // Shallow-merge each section with defaults so old DBs pick up newly-added
+  // fields (e.g. security.stealthConnect) without a migration step.
+  return {
+    terminal: { ...DEFAULT_SETTINGS.terminal, ...(stored.terminal || {}) },
+    ssh: { ...DEFAULT_SETTINGS.ssh, ...(stored.ssh || {}) },
+    security: { ...DEFAULT_SETTINGS.security, ...(stored.security || {}) },
+    general: { ...DEFAULT_SETTINGS.general, ...(stored.general || {}) },
+  };
 }
 
 export function saveSettings(settings: SyeSettings): void {

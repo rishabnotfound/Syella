@@ -1,7 +1,7 @@
 {
   "name": "syella",
   "productName": "Syella",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Your portable SSH workstation.",
   "main": "dist/main/main.js",
   "scripts": {
@@ -97,8 +97,10 @@
       "installerHeaderIcon": "assets/icon.ico",
       "uninstallDisplayName": "Syella",
       "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "differentialPackage": false
     },
+    "publish": null,
     "portable": {
       "artifactName": "Syella-Portable-${version}.exe"
     }

@@ -13,6 +13,11 @@ export interface SyeSession {
   connectionTimeout: number;
   startupCommand: string;
   proxyJump: string;
+  provider?: string;
+  costAmount?: number;
+  costCurrency?: string;
+  costPeriod?: 'monthly' | 'yearly' | 'hourly' | 'one-time';
+  expiresAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -89,6 +94,7 @@ export interface SyeSettings {
   security: {
     autoLockMinutes: number;
     clearClipboardSeconds: number;
+    stealthConnect: boolean;
   };
   general: {
     accentColor: string;
@@ -128,6 +134,9 @@ export type IpcChannels =
   | 'sftp:delete'
   | 'sftp:rename'
   | 'sftp:upload'
+  | 'sftp:cancelUpload'
+  | 'sftp:uploadStatus'
+  | 'fx:fetchUsdRates'
   | 'sftp:download'
   | 'sftp:stat'
   | 'backup:create'
@@ -135,6 +144,7 @@ export type IpcChannels =
   | 'backup:export'
   | 'backup:import'
   | 'app:getDataPath'
+  | 'shell:openExternal'
   | 'app:isFirstRun'
   | 'app:completeFirstRun'
   | 'dialog:openFile'

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, createRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FolderOpen } from 'lucide-react';
+// FleetOverview lives inline as the empty-state screen (no tabs open). It
+// auto-collapses to a minimal SYELLA welcome when no session has billing info,
+// and expands to a rich cost/expiry dashboard once you set any.
 import Titlebar from './components/Titlebar';
 import Sidebar from './components/Sidebar';
 import TabBar from './components/TabBar';
@@ -17,8 +20,11 @@ import ShortcutsOverlay from './components/ShortcutsOverlay';
 import SnippetsBar from './components/SnippetsBar';
 import FileViewer from './components/FileViewer';
 import QuickConnect from './components/QuickConnect';
+import PasswordPrompt from './components/PasswordPrompt';
+import FleetOverview from './components/FleetOverview';
 import { useToast } from './components/Toast';
 import { useSessions, useGroups, useSettings, useTabs, useFirstRun } from './hooks';
+import { useWireUploads, useTabUploads } from './uploadStore';
 import { SyeSession } from '../types';
 
 export default function App() {
@@ -26,7 +32,7 @@ export default function App() {
   const { sessions, reload: reloadSessions, save: saveSession, remove: removeSession } = useSessions();
   const { groups, reload: reloadGroups, save: saveGroup } = useGroups();
   const { settings, save: saveSettings } = useSettings();
-  const { tabs, activeTabId, setActiveTabId, openTab, closeTab, updateTabStatus } = useTabs();
+  const { tabs, activeTabId, setActiveTabId, openTab, closeTab, updateTabStatus, reorderTabs } = useTabs();
   const { isFirstRun, complete: completeFirstRun } = useFirstRun();
 
   const [showSplash, setShowSplash] = useState(true);
@@ -42,6 +48,12 @@ export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [disconnectedTabs, setDisconnectedTabs] = useState<Set<string>>(new Set());
+  const [pwPrompt, setPwPrompt] = useState<null | {
+    title: string; description: string; confirmLabel: string; requireConfirm: boolean;
+    onSubmit: (pw: string) => void;
+  }>(null);
+
+  useWireUploads();
 
   const activeTab = tabs.find(t => t.id === activeTabId) || null;
   const connectedSessionIds = useMemo(
@@ -62,23 +74,6 @@ export default function App() {
       if (!alive.has(key)) terminalRefs.current.delete(key);
     }
   }, [tabs]);
-
-  const tabIdsKey = useMemo(() => tabs.map(t => t.id).join('|'), [tabs]);
-  useEffect(() => {
-    const ids = tabIdsKey.split('|').filter(Boolean);
-    const unsubs = ids.map(tabId =>
-      window.syella.on(`ssh:cwd:${tabId}`, (cwd: any) => {
-        if (typeof cwd !== 'string' || !cwd.startsWith('/')) return;
-        setSftpState(prev => {
-          const cur = prev[tabId];
-          if (cur?.path === cwd) return prev;
-          const back = cur ? (cur.path && cur.path !== cwd ? [...cur.back, cur.path].slice(-50) : cur.back) : [];
-          return { ...prev, [tabId]: { path: cwd, back } };
-        });
-      })
-    );
-    return () => unsubs.forEach(u => u());
-  }, [tabIdsKey]);
 
   const handleConnect = useCallback((session: SyeSession) => {
     openTab(session);
@@ -128,30 +123,44 @@ export default function App() {
     await saveSession({ ...session, favorite: !session.favorite, updatedAt: Date.now() });
   }, [saveSession]);
 
-  const handleBackupExport = useCallback(async () => {
-    const password = prompt('Enter backup password:');
-    if (!password) return;
-    try {
-      const path = await window.syella.invoke('backup:export', password);
-      if (path) toast.success('Backup exported', path);
-    } catch (e: any) {
-      toast.error('Backup failed', e?.message || 'Unknown error');
-    }
+  const handleBackupExport = useCallback(() => {
+    setPwPrompt({
+      title: 'Encrypt backup',
+      description: 'Choose a password to protect this backup file.',
+      confirmLabel: 'Export backup',
+      requireConfirm: true,
+      onSubmit: async (password) => {
+        setPwPrompt(null);
+        try {
+          const path = await window.syella.invoke('backup:export', password);
+          if (path) toast.success('Backup exported', path);
+        } catch (e: any) {
+          toast.error('Backup failed', e?.message || 'Unknown error');
+        }
+      },
+    });
   }, [toast]);
 
-  const handleBackupImport = useCallback(async () => {
-    const password = prompt('Enter backup password:');
-    if (!password) return;
-    try {
-      const result = await window.syella.invoke('backup:import', password, 'merge');
-      if (result) {
-        toast.success('Backup restored', `${result.sessions} sessions, ${result.groups} groups`);
-        reloadSessions();
-        reloadGroups();
-      }
-    } catch (e: any) {
-      toast.error('Import failed', e?.message || 'Unknown error');
-    }
+  const handleBackupImport = useCallback(() => {
+    setPwPrompt({
+      title: 'Restore backup',
+      description: 'Enter the password used when the backup was created.',
+      confirmLabel: 'Restore',
+      requireConfirm: false,
+      onSubmit: async (password) => {
+        setPwPrompt(null);
+        try {
+          const result = await window.syella.invoke('backup:import', password, 'merge');
+          if (result) {
+            toast.success('Backup restored', `${result.sessions} sessions, ${result.groups} groups`);
+            reloadSessions();
+            reloadGroups();
+          }
+        } catch (e: any) {
+          toast.error('Import failed', e?.message || 'Unknown error');
+        }
+      },
+    });
   }, [reloadSessions, reloadGroups, toast]);
 
   const handleDisconnected = useCallback((tabId: string) => {
@@ -189,15 +198,19 @@ export default function App() {
       const tag = el.tagName;
       return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
     };
+    const isMac = /Mac/i.test(navigator.platform);
+    // Shortcut policy (avoid ever colliding with OS shortcuts):
+    //   Tab-switch  : Ctrl+Tab always (Cmd+Tab is the macOS app switcher, do
+    //                 NOT trap it under any circumstance)
+    //   Prev/next   : Cmd+Option+←/→ on Mac (native Terminal.app pattern)
+    //   Sidebar rail: Cmd+Shift+B on Mac, Ctrl+Shift+B elsewhere
+    //   Zoom / snip : Cmd on Mac, Ctrl elsewhere
+    //   Menubar     : +K/+N/+W/+B/+E flow through the native menu accelerator,
+    //                 which uses CmdOrCtrl automatically — so nothing extra here.
+    const mod = (e: KeyboardEvent) => (isMac ? e.metaKey : e.ctrlKey);
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'k') { e.preventDefault(); setShowPalette(p => !p); return; }
-      if (e.ctrlKey && e.key === 't') { e.preventDefault(); setShowEditor('new'); return; }
-      if (e.ctrlKey && e.key === 'w') {
-        e.preventDefault();
-        if (activeTabId) closeTab(activeTabId);
-        return;
-      }
-      if (e.ctrlKey && e.key === 'Tab') {
+      // Ctrl+Tab (both platforms) — cycle tabs. Never trap Cmd+Tab on macOS.
+      if (e.ctrlKey && !e.metaKey && e.key === 'Tab') {
         e.preventDefault();
         if (tabs.length > 1 && activeTabId) {
           const idx = tabs.findIndex(t => t.id === activeTabId);
@@ -206,33 +219,37 @@ export default function App() {
         }
         return;
       }
-      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
-        e.preventDefault(); setSidebarCompact(v => !v); return;
-      }
-      if (e.ctrlKey && e.key === 'b') { e.preventDefault(); setSidebarVisible(v => !v); return; }
-      if (e.ctrlKey && e.key === 'e') {
+      // Mac-only: Cmd+Option+←/→ moves between tabs (Terminal.app / iTerm2 convention).
+      if (isMac && e.metaKey && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
-        if (activeTabId && activeTab?.status === 'connected') {
-          setSftpVisible(p => ({ ...p, [activeTabId]: !p[activeTabId] }));
+        if (tabs.length > 1 && activeTabId) {
+          const idx = tabs.findIndex(t => t.id === activeTabId);
+          const next = e.key === 'ArrowLeft'
+            ? (idx - 1 + tabs.length) % tabs.length
+            : (idx + 1) % tabs.length;
+          setActiveTabId(tabs[next].id);
         }
         return;
       }
-      if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+      if (mod(e) && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault(); setSidebarCompact(v => !v); return;
+      }
+      if (mod(e) && !e.shiftKey && !e.altKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.zoom(1);
         return;
       }
-      if (e.ctrlKey && e.key === '-') {
+      if (mod(e) && !e.shiftKey && !e.altKey && e.key === '-') {
         e.preventDefault();
         if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.zoom(-1);
         return;
       }
-      if (e.ctrlKey && e.key === '0') {
+      if (mod(e) && !e.shiftKey && !e.altKey && e.key === '0') {
         e.preventDefault();
         if (activeTabId) terminalRefs.current.get(activeTabId)?.current?.resetZoom();
         return;
       }
-      if (e.ctrlKey && e.key === '/') {
+      if (mod(e) && e.key === '/') {
         e.preventDefault();
         if (activeTab?.status === 'connected') setShowSnippets(v => !v);
         return;
@@ -244,6 +261,81 @@ export default function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [activeTabId, activeTab, tabs, closeTab, setActiveTabId]);
+
+  // Bridge for the native menubar (main-process → renderer). The menu items
+  // just fire these channels; the actual behavior lives here so we don't
+  // duplicate logic between menu / shortcuts / palette.
+  useEffect(() => {
+    const activeTerm = () => activeTabId ? terminalRefs.current.get(activeTabId)?.current : null;
+
+    // Copy/paste/selectAll must dispatch to whatever has focus. Native input
+    // fields (SessionEditor, QuickConnect, palette) get the DOM clipboard;
+    // xterm's canvas gets our custom bridge.
+    const editingInField = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return null;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) return el;
+      return null;
+    };
+    const doCopy = () => {
+      const el = editingInField();
+      if (el) {
+        const input = el as HTMLInputElement | HTMLTextAreaElement;
+        const text = typeof input.value === 'string'
+          ? input.value.substring(input.selectionStart ?? 0, input.selectionEnd ?? 0)
+          : (window.getSelection()?.toString() || '');
+        if (text) navigator.clipboard.writeText(text).catch(() => {});
+      } else {
+        activeTerm()?.copySelection();
+      }
+    };
+    const doPaste = async () => {
+      const el = editingInField();
+      if (el) {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (!text) return;
+          const input = el as HTMLInputElement | HTMLTextAreaElement;
+          const start = input.selectionStart ?? input.value.length;
+          const end = input.selectionEnd ?? start;
+          input.value = input.value.slice(0, start) + text + input.value.slice(end);
+          const pos = start + text.length;
+          input.setSelectionRange(pos, pos);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch {}
+      } else {
+        activeTerm()?.pasteFromClipboard();
+      }
+    };
+    const doSelectAll = () => {
+      const el = editingInField();
+      if (el && (el as HTMLInputElement).select) {
+        (el as HTMLInputElement).select();
+      } else {
+        activeTerm()?.selectAll();
+      }
+    };
+
+    const unsubs = [
+      window.syella.on('menu:newSession', () => setShowEditor('new')),
+      window.syella.on('menu:palette', () => setShowPalette(p => !p)),
+      window.syella.on('menu:quickConnect', () => setShowQuickConnect(true)),
+      window.syella.on('menu:closeTab', () => { if (activeTabId) closeTab(activeTabId); }),
+      window.syella.on('menu:settings', () => setShowSettings(true)),
+      window.syella.on('menu:toggleSidebar', () => setSidebarVisible(v => !v)),
+      window.syella.on('menu:toggleSftp', () => {
+        if (activeTabId && activeTab?.status === 'connected') {
+          setSftpVisible(p => ({ ...p, [activeTabId]: !p[activeTabId] }));
+        }
+      }),
+      window.syella.on('menu:find', () => { /* reserved: xterm search UI */ }),
+      window.syella.on('menu:copy', doCopy),
+      window.syella.on('menu:paste', doPaste),
+      window.syella.on('menu:selectAll', doSelectAll),
+    ];
+    return () => unsubs.forEach(u => u());
+  }, [activeTabId, activeTab, closeTab]);
 
   if (showSplash) return <SplashScreen onFinished={() => setShowSplash(false)} />;
   if (isFirstRun === null) return <div style={{ background: '#000', width: '100%', height: '100%' }} />;
@@ -272,6 +364,7 @@ export default function App() {
           {tabs.length > 0 && (
             <TabBar tabs={tabs} activeTabId={activeTabId}
               onSelect={setActiveTabId} onClose={closeTab}
+              onReorder={reorderTabs}
               onNew={() => setShowQuickConnect(true)} />
           )}
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -313,50 +406,20 @@ export default function App() {
               </div>
             ))}
             {tabs.length === 0 && (
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 14, userSelect: 'none',
-              }}>
-                <motion.img src="assets/icon.png" alt="Syella"
-                  initial={{ opacity: 0, scale: 0.94 }}
-                  animate={{ opacity: 0.18, scale: 1 }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                  style={{ width: 72, height: 72 }} />
-                <div style={{ fontSize: 24, fontWeight: 200, color: 'var(--text-faint)', letterSpacing: 6 }}>SYELLA</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Double-click a session or press{' '}
-                  <kbd style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 11,
-                    padding: '2px 7px', borderRadius: 5,
-                    background: 'rgba(140,170,230,0.08)',
-                    border: '1px solid var(--border-subtle)',
-                    color: 'var(--accent-light)',
-                  }}>Ctrl+K</kbd>
-                </div>
-              </div>
+              <FleetOverview
+                sessions={sessions}
+                onEditSession={(s) => setShowEditor(s)}
+                onConnect={handleConnect}
+                onNewSession={() => setShowEditor('new')}
+                onOpenPalette={() => setShowPalette(true)}
+              />
             )}
             <AnimatePresence>
               {tabs.length > 0 && activeTab?.status === 'connected' && !sftpVisible[activeTabId!] && (
-                <motion.button key="sftp-toggle"
-                  initial={{ opacity: 0, y: 8, scale: 0.94 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.94 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                  onClick={() => setSftpVisible(p => ({ ...p, [activeTabId!]: true }))}
-                  title="Open file manager (Ctrl+E)"
-                  style={{
-                    position: 'absolute', bottom: 16, right: 16, zIndex: 10,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 12px', fontSize: 11, borderRadius: 10,
-                    background: 'rgba(15,21,36,0.7)',
-                    border: '1px solid var(--border-medium)',
-                    color: 'var(--accent-light)',
-                    fontWeight: 500, letterSpacing: 0.5,
-                  }}>
-                  <FolderOpen size={13} />
-                  Files
-                </motion.button>
+                <SftpToggleButton
+                  key="sftp-toggle"
+                  tabId={activeTabId!}
+                  onClick={() => setSftpVisible(p => ({ ...p, [activeTabId!]: true }))} />
               )}
             </AnimatePresence>
           </div>
@@ -401,6 +464,16 @@ export default function App() {
         <Settings settings={settings} onSave={saveSettings} onClose={() => setShowSettings(false)}
           onBackupExport={handleBackupExport} onBackupImport={handleBackupImport} />
       )}
+
+      <PasswordPrompt
+        visible={!!pwPrompt}
+        title={pwPrompt?.title || ''}
+        description={pwPrompt?.description}
+        confirmLabel={pwPrompt?.confirmLabel || 'Confirm'}
+        requireConfirm={!!pwPrompt?.requireConfirm}
+        onSubmit={pw => pwPrompt?.onSubmit(pw)}
+        onCancel={() => setPwPrompt(null)}
+      />
     </div>
   );
 }
@@ -438,5 +511,43 @@ function SftpPanelBinding({ tabId, visible, state, setSftpVisible, setSftpState,
       onOpenFile={onOpenFile}
       onStateChange={onStateChange}
     />
+  );
+}
+
+// Pulls upload state per-tab so it can badge the toggle when uploads run in
+// the background (panel closed).
+function SftpToggleButton({ tabId, onClick }: { tabId: string; onClick: () => void }) {
+  const uploads = useTabUploads(tabId);
+  const active = Object.values(uploads).filter(u => !u.done);
+  const busy = active.length > 0;
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 6, scale: 0.94 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={onClick}
+      title={busy ? `${active.length} upload${active.length === 1 ? '' : 's'} in progress — click to view` : 'Open file manager (Ctrl+E)'}
+      style={{
+        position: 'absolute', bottom: 16, right: 16, zIndex: 10,
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '7px 12px', fontSize: 11, borderRadius: 10,
+        background: busy ? 'rgba(90,162,255,0.16)' : 'rgba(15,21,36,0.7)',
+        border: `1px solid ${busy ? 'rgba(90,162,255,0.5)' : 'var(--border-medium)'}`,
+        color: 'var(--accent-light)',
+        fontWeight: 500, letterSpacing: 0.5,
+      }}>
+      <FolderOpen size={13} />
+      Files
+      {busy && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          minWidth: 16, height: 16, padding: '0 5px', borderRadius: 8,
+          background: 'var(--accent)', color: '#fff',
+          fontSize: 9, fontWeight: 700, fontFamily: 'var(--font-mono)',
+        }}>{active.length}</span>
+      )}
+    </motion.button>
   );
 }

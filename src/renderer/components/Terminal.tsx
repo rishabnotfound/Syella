@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -7,26 +9,14 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import { SyeSession, SyeSettings } from '../../types';
 
-const SYELLA_BANNER = [
-  '\x1b[38;2;90;162;255m',
-  '   ____            _ _       ',
-  '  / ___| _   _  __| | | __ _ ',
-  '  \\___ \\| | | |/ _\\ | |/ _` |',
-  '   ___) | |_| |  __/ | | (_| |',
-  '  |____/ \\__, |\\___|_|_|\\__,_|',
-  '         |___/                ',
-  '\x1b[0m',
-  '',
-  '\x1b[38;2;90;162;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
-  '\x1b[38;2;120;140;170m  Portable SSH Workstation v1.0\x1b[0m',
-  '\x1b[38;2;90;162;255m  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\x1b[0m',
-  '',
-].join('\r\n');
-
 export interface TerminalHandle {
   zoom: (delta: number) => void;
   resetZoom: () => void;
   runCommand: (cmd: string) => void;
+  copySelection: () => void;
+  pasteFromClipboard: () => void;
+  selectAll: () => void;
+  focus: () => void;
 }
 
 interface Props {
@@ -45,6 +35,10 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const baseFontRef = useRef<number>(settings?.terminal?.fontSize ?? 14);
+  // The connecting overlay lives OUTSIDE xterm so xterm's buffer only ever
+  // contains real server bytes — that's what keeps the MOTD pristine.
+  const [showIntro, setShowIntro] = useState(true);
+  const [errText, setErrText] = useState<string | null>(null);
 
   const connect = useCallback(async () => {
     const creds = await window.syella.invoke('db:getCredentials', session.id);
@@ -78,6 +72,18 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     runCommand: (cmd: string) => {
       window.syella.send('ssh:data', tabId, cmd + '\r');
     },
+    copySelection: () => {
+      const term = termRef.current; if (!term) return;
+      const sel = term.getSelection();
+      if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    },
+    pasteFromClipboard: () => {
+      navigator.clipboard.readText().then(text => {
+        if (text) window.syella.send('ssh:data', tabId, text);
+      }).catch(() => {});
+    },
+    selectAll: () => { termRef.current?.selectAll(); },
+    focus: () => { termRef.current?.focus(); },
   }), [tabId, fitIfVisible]);
 
   useEffect(() => {
@@ -121,7 +127,12 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new SearchAddon());
-    term.loadAddon(new WebLinksAddon());
+    // Route xterm link clicks straight to the OS browser via IPC —
+    // WebLinksAddon's default `window.open` is silently blocked by our CSP,
+    // which is why clicks appeared to do nothing.
+    term.loadAddon(new WebLinksAddon((_e, url) => {
+      window.syella.invoke('shell:openExternal', url);
+    }));
     term.open(containerRef.current);
 
     // WebGL renderer: if it fails or loses context, dispose and let xterm
@@ -139,12 +150,35 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     termRef.current = term;
     fitRef.current = fit;
 
-    term.write(SYELLA_BANNER);
-    term.writeln(`\x1b[38;2;120;140;170m  \u25B8 SSH session to \x1b[38;2;90;162;255m${session.username}\x1b[38;2;120;140;170m@\x1b[38;2;139;220;255m${session.host}\x1b[38;2;120;140;170m:\x1b[38;2;139;233;253m${session.port}\x1b[0m`);
-    term.writeln(`\x1b[38;2;120;140;170m  \u25B8 Establishing connection...\x1b[0m\r\n`);
-
     term.onData(data => window.syella.send('ssh:data', tabId, data));
     term.onResize(({ cols, rows }) => window.syella.send('ssh:resize', tabId, cols, rows));
+
+    // Standard clipboard shortcuts: Cmd+C / Ctrl+Shift+C copies iff selection
+    // exists (otherwise falls through so Ctrl+C still sends SIGINT), and
+    // Cmd+V / Ctrl+Shift+V pastes clipboard content into the shell.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      const mac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const primary = mac ? e.metaKey : (e.ctrlKey && e.shiftKey);
+      if (primary && (e.key === 'c' || e.key === 'C')) {
+        const sel = term.getSelection();
+        if (sel) {
+          navigator.clipboard.writeText(sel).catch(() => {});
+          return false;
+        }
+      }
+      if (primary && (e.key === 'v' || e.key === 'V')) {
+        navigator.clipboard.readText().then(text => {
+          if (text) window.syella.send('ssh:data', tabId, text);
+        }).catch(() => {});
+        return false;
+      }
+      if (primary && (e.key === 'a' || e.key === 'A')) {
+        term.selectAll();
+        return false;
+      }
+      return true;
+    });
 
     const unsubs: (() => void)[] = [];
     unsubs.push(window.syella.on(`ssh:data:${tabId}`, (data: any) => {
@@ -153,11 +187,13 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
       else term.write(data);
     }));
     unsubs.push(window.syella.on(`ssh:connected:${tabId}`, () => {
+      setShowIntro(false);
       onConnected();
     }));
     unsubs.push(window.syella.on(`ssh:disconnected:${tabId}`, () => onDisconnected()));
     unsubs.push(window.syella.on(`ssh:error:${tabId}`, (msg: any) => {
-      term.writeln(`\r\n\x1b[38;2;248;113;113m  \u2718 Error: ${msg}\x1b[0m`);
+      setErrText(String(msg));
+      setShowIntro(false);
       onError(msg);
     }));
 
@@ -191,7 +227,61 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     };
   }, [tabId]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#0a0f1a', padding: 2 }} />;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#0a0f1a', padding: 2 }} />
+      <AnimatePresence>
+        {showIntro && (
+          <motion.div
+            key="intro"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              position: 'absolute', inset: 0,
+              background: '#0a0f1a',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 18,
+              pointerEvents: 'none', userSelect: 'none',
+            }}>
+            <motion.img
+              src="assets/icon.png" alt=""
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 0.9, scale: 1 }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+              style={{ width: 56, height: 56 }} />
+            <div style={{
+              fontSize: 12, color: '#8ba2c9', fontFamily: 'var(--font-mono)',
+              letterSpacing: 0.4, textAlign: 'center',
+            }}>
+              Connecting to{' '}
+              <span style={{ color: '#5aa2ff' }}>{session.username}</span>
+              <span style={{ color: '#5a6a85' }}>@</span>
+              <span style={{ color: '#8bdcff' }}>{session.host}</span>
+              <span style={{ color: '#5a6a85' }}>:</span>
+              <span style={{ color: '#8be9fd' }}>{session.port}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#5a6a85', fontSize: 11 }}>
+              <Loader2 size={12} className="spin" />
+              Establishing SSH session…
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {errText && (
+        <div style={{
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          padding: '8px 14px', borderRadius: 8, fontSize: 11.5,
+          background: 'rgba(248,113,113,0.12)',
+          border: '1px solid rgba(248,113,113,0.3)',
+          color: '#fca5a5', pointerEvents: 'none',
+        }}>
+          {errText}
+        </div>
+      )}
+    </div>
+  );
 });
 
 export default TerminalView;

@@ -5,6 +5,7 @@ import { getAllDataForBackup, restoreFromBackup } from './database';
 
 const BACKUP_VERSION = 1;
 const MAGIC = Buffer.from('SYELLA_BK');
+const MAGIC_LEN = MAGIC.length; // 9 bytes
 
 export function createBackup(password: string): Buffer {
   const data = getAllDataForBackup();
@@ -20,11 +21,14 @@ export function createBackup(password: string): Buffer {
 }
 
 export function restoreBackup(data: Buffer, password: string, mode: 'merge' | 'replace'): { sessions: number; groups: number } {
-  if (data.subarray(0, 8).toString() !== 'SYELLA_BK') throw new Error('Invalid backup file');
-  const salt = data.subarray(8, 40);
-  const iv = data.subarray(40, 56);
-  const tag = data.subarray(56, 72);
-  const encrypted = data.subarray(72);
+  // Magic is 9 bytes ("SYELLA_BK"), not 8 — previously the salt was written at
+  // offset 9 but read at offset 8, so every subsequent field was off by one
+  // and decryption always failed with "Invalid password or corrupted backup".
+  if (data.subarray(0, MAGIC_LEN).toString() !== 'SYELLA_BK') throw new Error('Invalid backup file');
+  const salt = data.subarray(MAGIC_LEN, MAGIC_LEN + 32);
+  const iv = data.subarray(MAGIC_LEN + 32, MAGIC_LEN + 48);
+  const tag = data.subarray(MAGIC_LEN + 48, MAGIC_LEN + 64);
+  const encrypted = data.subarray(MAGIC_LEN + 64);
   const key = crypto.pbkdf2Sync(password, salt, 200000, 32, 'sha512');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);

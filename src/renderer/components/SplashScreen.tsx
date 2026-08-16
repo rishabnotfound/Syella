@@ -12,10 +12,10 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 400);
-    const t2 = setTimeout(() => setPhase(2), 1200);
-    const t3 = setTimeout(() => setPhase(3), 4200);
-    const t4 = setTimeout(() => onFinished(), 5000);
+    const t1 = setTimeout(() => setPhase(1), 250);
+    const t2 = setTimeout(() => setPhase(2), 800);
+    const t3 = setTimeout(() => setPhase(3), 2400);
+    const t4 = setTimeout(() => onFinished(), 3000);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [onFinished]);
 
@@ -97,7 +97,6 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
             opacity: phase >= 1 ? 1 : 0,
             transform: phase >= 1 ? 'translateY(0)' : 'translateY(30px)',
             transition: 'all 900ms cubic-bezier(0.16,1,0.3,1)',
-            fontFamily: "'Inter', 'Segoe UI', sans-serif",
           }}>
             SYELLA
           </div>

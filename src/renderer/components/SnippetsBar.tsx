@@ -72,7 +72,7 @@ export default function SnippetsBar({ visible, onRun, onClose }: Props) {
 
           {items.map((s, i) => (
             <motion.div key={s.label + i} layout
-              whileHover={{ y: -1 }}
+
               transition={{ type: 'spring', stiffness: 400, damping: 26 }}
               style={{ position: 'relative', display: 'flex' }}>
               <button

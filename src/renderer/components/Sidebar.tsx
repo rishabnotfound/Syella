@@ -131,12 +131,12 @@ export default function Sidebar({
         background: 'linear-gradient(180deg, #0b1120, #060912)',
         borderRight: '1px solid var(--border-subtle)',
       }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--accent-gradient-soft)', border: '1px solid var(--border-medium)',
-        }}>
-          <Cable size={16} color="var(--accent-light)" />
-        </div>
+        <img
+          src="assets/icon.png"
+          alt="Syella"
+          draggable={false}
+          style={{ width: 30, height: 30, borderRadius: 8, objectFit: 'contain' }}
+        />
         <div style={{ height: 1, width: 28, background: 'var(--border-subtle)', margin: '6px 0' }} />
         <div style={{ flex: 1, overflowY: 'auto', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           {sessions.slice(0, 20).map(s => {
@@ -144,7 +144,7 @@ export default function Sidebar({
             const active = activeSessionId === s.id;
             return (
               <motion.button key={s.id}
-                whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.95 }}
+ whileTap={{ scale: 0.95 }}
                 onClick={() => onConnect(s)}
                 title={s.name}
                 style={{
@@ -165,19 +165,19 @@ export default function Sidebar({
           })}
         </div>
         <div style={{ height: 1, width: 28, background: 'var(--border-subtle)', margin: '4px 0' }} />
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onNewSession} title="New session" style={{
+        <motion.button whileTap={{ scale: 0.95 }} onClick={onNewSession} title="New session" style={{
           width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--accent-light)', background: 'var(--accent-dim)', border: '1px solid rgba(90,162,255,0.22)',
         }}>
           <Plus size={15} />
         </motion.button>
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onSettings} title="Settings" style={{
+        <motion.button whileTap={{ scale: 0.95 }} onClick={onSettings} title="Settings" style={{
           width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--text-secondary)',
         }}>
           <SettingsIcon size={15} />
         </motion.button>
-        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onShowShortcuts} title="Keyboard shortcuts (?)" style={{
+        <motion.button whileTap={{ scale: 0.95 }} onClick={onShowShortcuts} title="Keyboard shortcuts (?)" style={{
           width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--text-muted)',
         }}>
@@ -195,13 +195,12 @@ export default function Sidebar({
     }}>
       {/* Brand row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 8px' }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--accent-gradient-soft)',
-          border: '1px solid var(--border-medium)',
-        }}>
-          <Cable size={15} color="var(--accent-light)" />
-        </div>
+        <img
+          src="assets/icon.png"
+          alt="Syella"
+          draggable={false}
+          style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, objectFit: 'contain' }}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: 0.2 }}>Syella</div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{sessions.length} sessions · {connectedTabIds.size} live</div>
@@ -376,7 +375,7 @@ export default function Sidebar({
         borderTop: '1px solid var(--border-subtle)',
       }}>
         <motion.button
-          whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}
+ whileTap={{ scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 400, damping: 26 }}
           onClick={onNewSession} style={{
           padding: '9px 12px', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -389,7 +388,7 @@ export default function Sidebar({
         </motion.button>
         <div style={{ display: 'flex', gap: 6 }}>
           <motion.button
-            whileHover={{ background: 'var(--bg-hover)' as any }}
+            whileTap={{ scale: 0.96 }}
             transition={{ duration: 0.12 }}
             onClick={onSettings} style={{
             flex: 1,
@@ -401,7 +400,7 @@ export default function Sidebar({
             Settings
           </motion.button>
           <motion.button
-            whileHover={{ background: 'var(--bg-hover)' as any, scale: 1.02 }}
+
             whileTap={{ scale: 0.96 }}
             transition={{ duration: 0.12 }}
             onClick={onShowShortcuts}

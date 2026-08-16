@@ -35,8 +35,8 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
-  --font-sans: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --transition-fast: 120ms cubic-bezier(0.4,0,0.2,1);
   --transition: 200ms cubic-bezier(0.4,0,0.2,1);
   --transition-slow: 350ms cubic-bezier(0.4,0,0.2,1);
@@ -180,3 +180,12 @@ button { cursor: pointer; }
   to { transform: rotate(360deg); }
 }
 .spin { animation: spin 1.2s linear infinite; }
+
+/* Indeterminate marching bar — used by the SFTP upload toast so users see
+   liveness even when byte-level progress events lag. It slides a 40% wide
+   highlight across a full-width track continuously. */
+@keyframes march {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+.march { animation: march 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }

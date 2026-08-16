@@ -188,7 +188,7 @@ export default function QuickConnect({ visible, sessions, connectedSessionIds, o
               background: 'linear-gradient(180deg, rgba(10,15,26,0.2), rgba(10,15,26,0.5))',
             }}>
               <motion.button
-                whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+ whileTap={{ scale: 0.97 }}
                 onClick={() => { onNewSession(); onClose(); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,

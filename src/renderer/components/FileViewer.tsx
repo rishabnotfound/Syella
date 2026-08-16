@@ -256,7 +256,7 @@ export default function FileViewer({ tabId, path, size, onClose, onSaved, onNoti
               {meta?.kind === 'text' && (
                 <>
                   <IconAction Icon={RotateCcw} title="Revert" onClick={() => setTextContent(originalText)} disabled={!dirty} />
-                  <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  <motion.button whileTap={{ scale: 0.96 }}
                     onClick={save} disabled={!dirty || saving}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
@@ -396,7 +396,7 @@ function IconAction({ Icon, title, onClick, danger, disabled }: {
   danger?: boolean; disabled?: boolean;
 }) {
   return (
-    <motion.button whileHover={disabled ? {} : { scale: 1.06 }} whileTap={disabled ? {} : { scale: 0.92 }}
+    <motion.button whileTap={disabled ? {} : { scale: 0.92 }}
       onClick={onClick} disabled={disabled} title={title}
       style={{
         width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',

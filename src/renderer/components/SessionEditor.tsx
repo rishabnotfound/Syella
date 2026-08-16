@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Server, User, Lock, KeyRound, Terminal, Zap, Folder, Star, Trash2,
-  Eye, EyeOff, Save, Sparkles, FileKey, Timer, Wifi, StickyNote, Hash,
+  X, Server, User, Lock, KeyRound, Zap, Folder, Star, Trash2,
+  Eye, EyeOff, Save, FileKey, Hash,
+  ArrowRight, DollarSign, Cloud, Calendar, Repeat,
 } from 'lucide-react';
 import { SyeSession, SyeGroup } from '../../types';
 import { v4 as uuid } from 'uuid';
@@ -15,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Section = 'identity' | 'auth' | 'advanced';
+type Section = 'identity' | 'auth' | 'billing';
 
 export default function SessionEditor({ session, groups, onSave, onDelete, onClose }: Props) {
   const isNew = !session;
@@ -31,6 +32,13 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
   const [keepalive, setKeepalive] = useState(session?.keepalive || 30);
   const [timeoutVal, setTimeoutVal] = useState(session?.connectionTimeout || 15);
   const [startupCmd, setStartupCmd] = useState(session?.startupCommand || '');
+  const [provider, setProvider] = useState(session?.provider || '');
+  const [costAmount, setCostAmount] = useState<string>(session?.costAmount != null ? String(session.costAmount) : '');
+  const [costCurrency, setCostCurrency] = useState(session?.costCurrency || 'USD');
+  const [costPeriod, setCostPeriod] = useState<'monthly' | 'yearly' | 'hourly' | 'one-time'>(session?.costPeriod || 'monthly');
+  const [expiresAt, setExpiresAt] = useState<string>(
+    session?.expiresAt ? new Date(session.expiresAt).toISOString().slice(0, 10) : ''
+  );
   const [password, setPassword] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -54,12 +62,19 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
       else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         if (host) handleSave();
+      } else if (e.key === 'Enter' && !e.shiftKey && !(e.ctrlKey || e.metaKey)) {
+        const el = document.activeElement as HTMLElement | null;
+        if (el && el.tagName === 'TEXTAREA') return;
+        if (isNew && section !== 'billing' && host) {
+          e.preventDefault();
+          advance();
+        }
       }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, name, port, username, authMethod, group, favorite, notes, keepalive, timeoutVal, startupCmd, password, privateKey, passphrase]);
+  }, [host, name, port, username, authMethod, group, favorite, notes, keepalive, timeoutVal, startupCmd, password, privateKey, passphrase, section, isNew]);
 
   const handleSave = () => {
     const now = Date.now();
@@ -71,6 +86,11 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
       connectionTimeout: timeoutVal,
       startupCommand: startupCmd,
       proxyJump: session?.proxyJump || '',
+      provider: provider.trim() || undefined,
+      costAmount: costAmount.trim() ? Number(costAmount) : undefined,
+      costCurrency: costAmount.trim() ? 'USD' : undefined,
+      costPeriod: costAmount.trim() ? costPeriod : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt).getTime() : undefined,
       createdAt: session?.createdAt || now, updatedAt: now,
     };
     onSave(s, password, privateKey, passphrase);
@@ -87,10 +107,27 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
   const sections: { id: Section; label: string; Icon: React.ComponentType<any>; complete?: boolean }[] = useMemo(() => [
     { id: 'identity', label: 'Identity', Icon: Server, complete: !!host },
     { id: 'auth', label: 'Auth', Icon: Lock, complete: authMethod === 'password' ? !!password : !!privateKey },
-    { id: 'advanced', label: 'Advanced', Icon: Sparkles },
-  ], [host, authMethod, password, privateKey]);
+    { id: 'billing', label: 'Billing', Icon: DollarSign, complete: !!(provider || costAmount || expiresAt) },
+  ], [host, authMethod, password, privateKey, provider, costAmount, expiresAt]);
 
   const canSave = !!host;
+  const isWizardStep = isNew && section !== 'billing';
+  const nextSection: Section | null =
+    section === 'identity' ? 'auth'
+    : section === 'auth' ? 'billing'
+    : null;
+  const advance = () => {
+    if (!canSave) return;
+    if (nextSection) setSection(nextSection);
+  };
+  const primaryAction = () => {
+    if (isWizardStep) advance();
+    else handleSave();
+  };
+  const primaryLabel = isWizardStep
+    ? (section === 'identity' ? 'Continue to auth' : 'Continue to billing')
+    : (isNew ? 'Create session' : 'Save changes');
+  const PrimaryIcon = isWizardStep ? ArrowRight : (isNew ? Zap : Save);
 
   return (
     <AnimatePresence>
@@ -145,14 +182,14 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
               </div>
             </div>
             <motion.button
-              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }}
+ whileTap={{ scale: 0.92 }}
               onClick={() => setFavorite(v => !v)}
               title={favorite ? 'Unfavorite' : 'Favorite'}
               style={iconBtnStyle(favorite ? '#fbbf24' : 'var(--text-muted)')}>
               <Star size={15} fill={favorite ? '#fbbf24' : 'none'} />
             </motion.button>
             <motion.button
-              whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }}
+ whileTap={{ scale: 0.92 }}
               onClick={onClose} title="Close (Esc)"
               style={iconBtnStyle('var(--text-muted)')}>
               <X size={15} />
@@ -282,7 +319,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                         <Field label="Password" Icon={Lock}>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <Input flex value={password} onChange={setPassword} type={showPw ? 'text' : 'password'} placeholder="•••••••" />
-                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+                            <motion.button whileTap={{ scale: 0.92 }}
                               onClick={() => setShowPw(v => !v)} title={showPw ? 'Hide' : 'Show'}
                               style={sideBtnStyle}>
                               {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -295,7 +332,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                         <Field label="Private Key" Icon={FileKey}>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <Input flex value={privateKey} onChange={setPrivateKey} placeholder="/path/to/id_rsa or paste key" mono />
-                            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }}
+                            <motion.button whileTap={{ scale: 0.96 }}
                               onClick={browseKey}
                               style={{ ...sideBtnStyle, width: 'auto', padding: '0 14px', fontSize: 12, fontWeight: 500 }}>
                               Browse
@@ -305,7 +342,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                         <Field label="Passphrase" Icon={KeyRound}>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <Input flex value={passphrase} onChange={setPassphrase} type={showPass ? 'text' : 'password'} placeholder="Optional" />
-                            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+                            <motion.button whileTap={{ scale: 0.92 }}
                               onClick={() => setShowPass(v => !v)} title={showPass ? 'Hide' : 'Show'}
                               style={sideBtnStyle}>
                               {showPass ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -318,26 +355,36 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                 </motion.div>
               )}
 
-              {section === 'advanced' && (
-                <motion.div key="advanced" {...sectionMotion} style={sectionColStyle}>
+              {section === 'billing' && (
+                <motion.div key="billing" {...sectionMotion} style={sectionColStyle}>
+                  <div style={{
+                    fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
+                    padding: '8px 12px', borderRadius: 8,
+                    background: 'rgba(90,162,255,0.05)',
+                    border: '1px solid rgba(90,162,255,0.15)',
+                  }}>
+                    Track hosting costs, provider, and renewal dates. All fields optional —
+                    fill them in to see spend totals and expiry warnings across your fleet.
+                  </div>
+                  <Field label="Hosting provider" Icon={Cloud}>
+                    <Input value={provider} onChange={setProvider} placeholder="Any hosting name" />
+                  </Field>
                   <Row>
-                    <Field label="Keepalive (s)" Icon={Wifi} flex={1}>
-                      <Input type="number" value={String(keepalive)} onChange={v => setKeepalive(Number(v) || 0)} mono />
+                    <Field label="Cost (USD)" Icon={DollarSign} flex={2}>
+                      <Input value={costAmount} onChange={setCostAmount} placeholder="0.00" type="number" mono />
                     </Field>
-                    <Field label="Timeout (s)" Icon={Timer} flex={1}>
-                      <Input type="number" value={String(timeoutVal)} onChange={v => setTimeoutVal(Number(v) || 0)} mono />
+                    <Field label="Billing period" Icon={Repeat} flex={2}>
+                      <select value={costPeriod} onChange={e => setCostPeriod(e.target.value as any)}
+                        style={{ ...inputStyleObj }}>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="one-time">One-time</option>
+                      </select>
                     </Field>
                   </Row>
-                  <Field label="Startup command" Icon={Terminal}>
-                    <Input value={startupCmd} onChange={setStartupCmd} placeholder="cd /app && ls" mono />
-                  </Field>
-                  <Field label="Notes" Icon={StickyNote}>
-                    <textarea
-                      value={notes} onChange={e => setNotes(e.target.value)}
-                      placeholder="Anything worth remembering…"
-                      style={{
-                        ...inputStyleObj, minHeight: 72, resize: 'vertical', fontFamily: 'inherit',
-                      }} />
+                  <Field label="Expires / renews on" Icon={Calendar}>
+                    <Input type="date" value={expiresAt} onChange={setExpiresAt} mono />
                   </Field>
                 </motion.div>
               )}
@@ -358,13 +405,13 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                     initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }}
                     style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 500 }}>Delete?</span>
-                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                    <motion.button whileTap={{ scale: 0.96 }}
                       onClick={() => onDelete(session!.id)}
                       style={{
                         padding: '6px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 600,
                         background: 'var(--danger)', color: '#fff', border: '1px solid var(--danger)',
                       }}>Yes, delete</motion.button>
-                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                    <motion.button whileTap={{ scale: 0.96 }}
                       onClick={() => setConfirmDelete(false)}
                       style={{
                         padding: '6px 12px', borderRadius: 7, fontSize: 11.5, color: 'var(--text-muted)',
@@ -374,7 +421,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                 ) : (
                   <motion.button key="del"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+ whileTap={{ scale: 0.96 }}
                     onClick={() => setConfirmDelete(true)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
@@ -388,7 +435,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
               </AnimatePresence>
             )}
             <div style={{ flex: 1 }} />
-            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+            <motion.button whileTap={{ scale: 0.97 }}
               onClick={onClose}
               style={{
                 padding: '8px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 500,
@@ -397,8 +444,21 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
               }}>
               Cancel
             </motion.button>
-            <motion.button whileHover={canSave ? { y: -1, scale: 1.01 } : {}} whileTap={canSave ? { scale: 0.98 } : {}}
-              onClick={handleSave}
+            {isWizardStep && canSave && (
+              <motion.button whileTap={{ scale: 0.97 }}
+                onClick={handleSave}
+                title="Skip remaining steps and create the session"
+                style={{
+                  padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                }}>
+                Create now
+              </motion.button>
+            )}
+            <motion.button whileTap={canSave ? { scale: 0.98 } : {}}
+              onClick={primaryAction}
               disabled={!canSave}
               style={{
                 padding: '8px 18px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
@@ -410,13 +470,13 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                 cursor: canSave ? 'pointer' : 'default',
                 boxShadow: canSave ? '0 6px 22px rgba(90,162,255,0.28)' : 'none',
               }}>
-              {isNew ? <Zap size={13} /> : <Save size={13} />}
-              {isNew ? 'Create session' : 'Save changes'}
+              <PrimaryIcon size={13} />
+              {primaryLabel}
               <kbd style={{
                 fontFamily: 'var(--font-mono)', fontSize: 9.5, padding: '1px 5px', borderRadius: 3,
                 background: 'rgba(255,255,255,0.15)',
                 color: canSave ? 'rgba(255,255,255,0.85)' : 'var(--text-faint)',
-              }}>⌘↵</kbd>
+              }}>{isWizardStep ? '↵' : '⌘↵'}</kbd>
             </motion.button>
           </div>
         </motion.div>

@@ -66,7 +66,7 @@ export default function InputModal({
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: 0.3 }}>
                 {title}
               </div>
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+              <motion.button whileTap={{ scale: 0.92 }}
                 onClick={onCancel}
                 style={{
                   width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -90,7 +90,7 @@ export default function InputModal({
               }}
             />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+              <motion.button whileTap={{ scale: 0.97 }}
                 onClick={onCancel}
                 style={{
                   padding: '7px 14px', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)',
@@ -98,7 +98,7 @@ export default function InputModal({
                 }}>
                 Cancel
               </motion.button>
-              <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+              <motion.button whileTap={{ scale: 0.97 }}
                 onClick={submit}
                 disabled={!value.trim()}
                 style={{

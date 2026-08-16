@@ -1,29 +1,23 @@
 import React from 'react';
-import { Minus, Square, X, Terminal as TerminalIcon } from 'lucide-react';
+import { Minus, Square, X } from 'lucide-react';
 
 export default function Titlebar() {
   const send = (ch: string) => window.syella.send(ch);
+  const isMac = window.syella.platform === 'darwin';
   return (
     <div
       className="glass drag"
       style={{
-        height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 38, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         borderBottom: '1px solid var(--border-subtle)',
-        userSelect: 'none', paddingLeft: 14, paddingRight: 0, flexShrink: 0,
+        userSelect: 'none',
+        // Reserve space for the native traffic-light buttons on macOS.
+        paddingLeft: isMac ? 80 : 14,
+        paddingRight: 0, flexShrink: 0,
         background: 'linear-gradient(180deg, rgba(15,21,36,0.75), rgba(10,15,26,0.55))',
       }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 22, height: 22, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--accent-gradient-soft)',
-          border: '1px solid var(--border-medium)',
-        }}>
-          <TerminalIcon size={12} color="var(--accent-light)" />
-        </div>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: 1.8 }}>SYELLA</span>
-      </div>
       <div className="no-drag" style={{ display: 'flex', height: '100%' }}>
-        {[
+        {!isMac && [
           { icon: Minus, label: 'minimize', act: 'window:minimize' },
           { icon: Square, label: 'maximize', act: 'window:maximize' },
           { icon: X, label: 'close', act: 'window:close', danger: true },

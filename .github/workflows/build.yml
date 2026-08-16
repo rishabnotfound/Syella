@@ -116,35 +116,69 @@ jobs:
           prerelease: ${{ steps.tag.outputs.prerelease }}
           generate_release_notes: true
           body: |
-            ## Downloads — pick the right build for your machine
+            ## Downloads
+
+            Pick the file that matches your machine. **Bold** rows are the recommended pick for that platform.
 
             ### macOS
+
             | File | For |
             |---|---|
-            | **`Syella-${{ steps.pkg.outputs.version }}-arm64.dmg`** | Apple Silicon (M1, M2, M3, M4) — **most modern Macs** |
+            | **`Syella-${{ steps.pkg.outputs.version }}-arm64.dmg`** | Apple Silicon (M1 / M2 / M3 / M4) — most Macs from 2020 onward |
             | `Syella-${{ steps.pkg.outputs.version }}.dmg` | Intel Macs (pre-2020) |
 
-            > On first open, mount the DMG and **double-click `Install Syella.command`** instead of dragging manually. This handles the macOS quarantine warning automatically. If you drag manually and see *"Syella is damaged"*, run `xattr -cr /Applications/Syella.app` in Terminal and reopen — the app is fine, it's just unsigned.
+            Not sure which one you have? Click the Apple menu → **About This Mac**. If the chip line mentions **M1/M2/M3/M4**, use `arm64`. If it says **Intel**, use the plain `.dmg`.
+
+            #### Installing on macOS — important
+
+            Syella is not signed with an Apple Developer certificate (paid signing costs $99/yr and this is a free tool). macOS will quarantine the app on first launch. There are two clean ways to handle it:
+
+            **Option A — recommended:** After mounting the DMG, **double-click `Install Syella.command`** in the DMG window. It copies the app into `/Applications` and clears the quarantine flag in one step.
+
+            **Option B — if you dragged the app manually and see *"Syella is damaged and can't be opened"*:** open Terminal and run:
+
+            ```bash
+            xattr -cr /Applications/Syella.app
+            ```
+
+            Then reopen the app. This clears the quarantine attribute — the app is fine, it's just unsigned.
 
             ### Windows
+
             | File | For |
             |---|---|
-            | **`Syella.Setup.${{ steps.pkg.outputs.version }}.exe`** | Standard installer — creates Start Menu + desktop shortcuts |
-            | `Syella-Portable-${{ steps.pkg.outputs.version }}.exe` | Portable — single file, no install, runs from anywhere |
+            | **`Syella.Setup.${{ steps.pkg.outputs.version }}.exe`** | Standard installer — adds Start Menu + desktop shortcuts, supports uninstall |
+            | `Syella-Portable-${{ steps.pkg.outputs.version }}.exe` | Portable single-file build — no install, runs from anywhere (USB stick, etc.) |
 
-            > SmartScreen may warn on first run (unsigned) — click **More info** → **Run anyway**.
+            #### Installing on Windows
+
+            SmartScreen will warn on first run because the executable isn't code-signed. Click **More info** → **Run anyway**. This is a one-time prompt.
 
             ### Linux
+
             | File | For |
             |---|---|
-            | **`Syella-${{ steps.pkg.outputs.version }}.AppImage`** | Universal — any distro (Ubuntu, Fedora, Arch, etc.). `chmod +x` and run. |
-            | `syella_${{ steps.pkg.outputs.version }}_amd64.deb` | Debian / Ubuntu — `sudo dpkg -i syella_*.deb` |
+            | **`Syella-${{ steps.pkg.outputs.version }}.AppImage`** | Universal — works on any distro (Ubuntu, Fedora, Arch, Debian, etc.) |
+            | `syella_${{ steps.pkg.outputs.version }}_amd64.deb` | Debian / Ubuntu — integrates with the system package manager |
+
+            #### Installing the AppImage
+
+            ```bash
+            chmod +x Syella-${{ steps.pkg.outputs.version }}.AppImage
+            ./Syella-${{ steps.pkg.outputs.version }}.AppImage
+            ```
+
+            #### Installing the `.deb`
+
+            ```bash
+            sudo dpkg -i syella_${{ steps.pkg.outputs.version }}_amd64.deb
+            sudo apt-get install -f    # only if dpkg reports missing dependencies
+            ```
 
             ---
 
-            **Not sure which Mac you have?** Click Apple menu → About This Mac. If the chip says *M1/M2/M3/M4/etc.* → **arm64**. If it says *Intel* → the plain `.dmg`.
+            Issues? Report them at https://github.com/rishabnotfound/Syella/issues
 
-            ---
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe

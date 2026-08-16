@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const api = {
+  platform: process.platform,
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const sub = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);

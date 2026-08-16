@@ -4,35 +4,63 @@ import { Keyboard, X } from 'lucide-react';
 
 interface Props { visible: boolean; onClose: () => void; }
 
+// "Mod" is a placeholder we swap for the platform key (⌘ on Mac, Ctrl elsewhere).
+const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+
 const SECTIONS: { title: string; items: [string, string][] }[] = [
   {
     title: 'General',
     items: [
-      ['Ctrl+K', 'Command palette'],
-      ['Ctrl+T', 'New session'],
-      ['Ctrl+W', 'Close active tab'],
+      ['Mod+K', 'Command palette'],
+      ['Mod+N', 'New session'],
+      ['Mod+P', 'Quick connect'],
+      ['Mod+W', 'Close active tab'],
+      // Ctrl+Tab always (Cmd+Tab is the OS app switcher on macOS).
       ['Ctrl+Tab', 'Next tab'],
       ['Ctrl+Shift+Tab', 'Previous tab'],
+      ...(isMac
+        ? ([
+            ['Cmd+Alt+→', 'Next tab (Mac)'],
+            ['Cmd+Alt+←', 'Previous tab (Mac)'],
+          ] as [string, string][])
+        : []),
       ['?', 'Show this help'],
     ],
   },
   {
     title: 'Layout',
     items: [
-      ['Ctrl+B', 'Toggle sidebar'],
-      ['Ctrl+Shift+B', 'Icon-rail sidebar'],
-      ['Ctrl+E', 'Toggle SFTP panel'],
+      ['Mod+B', 'Toggle sidebar'],
+      ['Mod+Shift+B', 'Icon-rail sidebar'],
+      ['Mod+E', 'Toggle SFTP panel'],
     ],
   },
   {
     title: 'Terminal',
     items: [
-      ['Ctrl+=', 'Zoom in'],
-      ['Ctrl+-', 'Zoom out'],
-      ['Ctrl+0', 'Reset zoom'],
+      ['Mod+C', 'Copy selection'],
+      ['Mod+V', 'Paste'],
+      ['Mod+A', 'Select all'],
+      ['Mod+=', 'Zoom in'],
+      ['Mod+-', 'Zoom out'],
+      ['Mod+0', 'Reset zoom'],
     ],
   },
 ];
+
+const MOD_LABEL = isMac ? '⌘' : 'Ctrl';
+const CMD_LABEL = isMac ? '⌘' : 'Cmd';
+const SHIFT_LABEL = isMac ? '⇧' : 'Shift';
+const ALT_LABEL = isMac ? '⌥' : 'Alt';
+const CTRL_LABEL = isMac ? '⌃' : 'Ctrl';
+const formatKeys = (raw: string) =>
+  raw
+    .replace(/Mod/g, MOD_LABEL)
+    .replace(/Ctrl/g, CTRL_LABEL)
+    .replace(/Cmd/g, CMD_LABEL)
+    .replace(/Shift/g, SHIFT_LABEL)
+    .replace(/Alt/g, ALT_LABEL)
+    .replace(/\+/g, isMac ? '' : '+');
 
 export default function ShortcutsOverlay({ visible, onClose }: Props) {
   return (
@@ -67,7 +95,9 @@ export default function ShortcutsOverlay({ visible, onClose }: Props) {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Keyboard shortcuts</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1 }}>Move faster around Syella</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1 }}>
+                  Move faster around Syella {isMac ? '· macOS' : ''}
+                </div>
               </div>
               <button onClick={onClose} style={{
                 width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -101,7 +131,8 @@ export default function ShortcutsOverlay({ visible, onClose }: Props) {
                           background: 'rgba(140,170,230,0.08)',
                           border: '1px solid var(--border-subtle)',
                           color: 'var(--text-primary)',
-                        }}>{keys}</kbd>
+                          letterSpacing: isMac ? 1 : 0,
+                        }}>{formatKeys(keys)}</kbd>
                       </div>
                     ))}
                   </div>

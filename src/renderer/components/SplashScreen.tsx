@@ -118,7 +118,7 @@ export default function SplashScreen({ onFinished }: { onFinished: () => void })
         opacity: phase >= 2 ? 1 : 0,
         transition: 'opacity 600ms ease-out 400ms',
       }}>
-        v1.1.1
+        v1.1.2
       </div>
     </div>
   );

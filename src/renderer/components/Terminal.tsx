@@ -44,7 +44,21 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     const creds = await window.syella.invoke('db:getCredentials', session.id);
     const term = termRef.current!;
     const fit = fitRef.current!;
-    fit.fit();
+    // Wait for the container to actually have layout — on first mount the
+    // tab panel isn't laid out yet, so an immediate fit() latches xterm at
+    // 80×24 and the PTY is opened at that tiny size.
+    const waitForLayout = () => new Promise<void>(resolve => {
+      let tries = 0;
+      const tick = () => {
+        const el = containerRef.current;
+        if (el && el.offsetWidth > 0 && el.offsetHeight > 0) return resolve();
+        if (++tries > 30) return resolve();
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await waitForLayout();
+    try { fit.fit(); } catch {}
     await window.syella.invoke('ssh:connect', {
       tabId, session, credentials: creds || { sessionId: session.id },
       cols: term.cols, rows: term.rows,
@@ -145,8 +159,6 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
       term.loadAddon(webgl);
     } catch {}
 
-    fit.fit();
-
     termRef.current = term;
     fitRef.current = fit;
 
@@ -189,6 +201,25 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     unsubs.push(window.syella.on(`ssh:connected:${tabId}`, () => {
       setShowIntro(false);
       onConnected();
+      // Force a refit once the intro overlay is dismissed. xterm's renderer
+      // may have latched onto stale dimensions during the mount race; without
+      // this the terminal stays a tiny box in the corner until the user
+      // Cmd +/- to trigger a resize themselves.
+      const refitBurst = () => {
+        const el = containerRef.current;
+        if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) return;
+        try {
+          fit.fit();
+          const { cols, rows } = term;
+          window.syella.send('ssh:resize', tabId, cols, rows);
+          lastCols = cols; lastRows = rows;
+        } catch {}
+      };
+      requestAnimationFrame(() => {
+        refitBurst();
+        requestAnimationFrame(refitBurst);
+        setTimeout(refitBurst, 120);
+      });
     }));
     unsubs.push(window.syella.on(`ssh:disconnected:${tabId}`, () => onDisconnected()));
     unsubs.push(window.syella.on(`ssh:error:${tabId}`, (msg: any) => {
@@ -201,7 +232,7 @@ const TerminalView = forwardRef<TerminalHandle, Props>(function TerminalView(
     // effective cols/rows haven't actually changed. Prevents the shell from
     // receiving a spurious SIGWINCH on tab switch, which would redraw the
     // prompt on a fresh line mid-typing.
-    let lastCols = term.cols, lastRows = term.rows;
+    let lastCols = 0, lastRows = 0;
     const safeFit = () => {
       const el = containerRef.current;
       if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) return;

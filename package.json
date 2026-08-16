@@ -1,7 +1,7 @@
 {
   "name": "syella",
   "productName": "Syella",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Your portable SSH workstation.",
   "main": "dist/main/main.js",
   "scripts": {

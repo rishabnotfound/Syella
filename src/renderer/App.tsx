@@ -299,7 +299,17 @@ export default function App() {
           const input = el as HTMLInputElement | HTMLTextAreaElement;
           const start = input.selectionStart ?? input.value.length;
           const end = input.selectionEnd ?? start;
-          input.value = input.value.slice(0, start) + text + input.value.slice(end);
+          const merged = input.value.slice(0, start) + text + input.value.slice(end);
+          // React tracks controlled inputs via a hidden _valueTracker. A plain
+          // `input.value = ...` bypasses it, so React sees no change and on the
+          // next render clobbers our value back to state. Go through the native
+          // prototype setter so React's tracker picks up the mutation.
+          const proto = input instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(input, merged);
+          else input.value = merged;
           const pos = start + text.length;
           input.setSelectionRange(pos, pos);
           input.dispatchEvent(new Event('input', { bubbles: true }));

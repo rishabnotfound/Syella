@@ -239,6 +239,21 @@ function registerIpc(): void {
     return result.canceled ? null : result.filePaths;
   });
 
+  // Read a private-key file the user picked and hand back its contents. ssh2
+  // requires the actual PEM/OpenSSH text, not the path — storing the path
+  // was silently breaking key-based auth.
+  ipcMain.handle('keyfile:read', async (_, filePath: string) => {
+    try {
+      const text = fs.readFileSync(filePath, 'utf8');
+      if (!/-----BEGIN [A-Z0-9 ]+-----/.test(text)) {
+        throw new Error('File does not look like a private key');
+      }
+      return { ok: true, text };
+    } catch (e: any) {
+      return { ok: false, error: e.message || 'Could not read key file' };
+    }
+  });
+
   ipcMain.handle('dialog:saveFile', async (_, options) => {
     if (!mainWindow) return null;
     const result = await dialog.showSaveDialog(mainWindow, options);

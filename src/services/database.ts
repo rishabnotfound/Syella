@@ -14,8 +14,7 @@ const DEFAULT_SETTINGS: SyeSettings = {
     fontSize: 14, cursorStyle: 'bar', cursorBlink: true,
     scrollback: 10000, copyOnSelect: false, bellStyle: 'none',
   },
-  ssh: { defaultPort: 22, keepalive: 30, connectionTimeout: 15 },
-  security: { autoLockMinutes: 0, clearClipboardSeconds: 0, stealthConnect: false },
+  security: { stealthConnect: false },
   general: { accentColor: '#388CFF', transparency: 0.15, confirmBeforeClose: true, restoreTabsOnStart: false },
 };
 
@@ -211,7 +210,6 @@ export function getSettings(): SyeSettings {
   // fields (e.g. security.stealthConnect) without a migration step.
   return {
     terminal: { ...DEFAULT_SETTINGS.terminal, ...(stored.terminal || {}) },
-    ssh: { ...DEFAULT_SETTINGS.ssh, ...(stored.ssh || {}) },
     security: { ...DEFAULT_SETTINGS.security, ...(stored.security || {}) },
     general: { ...DEFAULT_SETTINGS.general, ...(stored.general || {}) },
   };

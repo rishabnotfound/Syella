@@ -31,7 +31,17 @@ export function connect(win: BrowserWindow, tabId: string, session: SyeSession, 
   if (session.authMethod === 'password' && creds.password) {
     config.password = creds.password;
   } else if (session.authMethod === 'privateKey' && creds.privateKey) {
-    config.privateKey = creds.privateKey;
+    // Older sessions may have stored a filesystem path instead of the PEM/OpenSSH
+    // material (pre-fix behavior of the Browse button). Detect that and read
+    // the file inline so those sessions keep working.
+    let key = creds.privateKey;
+    if (!/-----BEGIN [A-Z0-9 ]+-----/.test(key) && key.length < 1024) {
+      try {
+        const resolved = key.startsWith('~/') ? path.join(process.env.HOME || '', key.slice(2)) : key;
+        if (fs.existsSync(resolved)) key = fs.readFileSync(resolved, 'utf8');
+      } catch {}
+    }
+    config.privateKey = key;
     if (creds.passphrase) config.passphrase = creds.passphrase;
   }
 

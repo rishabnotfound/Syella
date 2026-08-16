@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+  import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Wifi, Lock, Archive, Download, Upload, FileDown, FileUp, ShieldCheck,
+  X, Lock, Archive, Download, Upload, FileDown, FileUp, ShieldCheck,
 } from 'lucide-react';
 import { SyeSettings } from '../../types';
 
-type TabKey = 'ssh' | 'security' | 'backup';
+type TabKey = 'security' | 'backup';
 
 interface Props {
   settings: SyeSettings;
@@ -16,13 +16,12 @@ interface Props {
 }
 
 const TABS: { key: TabKey; label: string; Icon: React.ComponentType<any> }[] = [
-  { key: 'ssh', label: 'SSH', Icon: Wifi },
   { key: 'security', label: 'Security', Icon: Lock },
   { key: 'backup', label: 'Backup', Icon: Archive },
 ];
 
 export default function Settings({ settings, onSave, onClose, onBackupExport, onBackupImport }: Props) {
-  const [tab, setTab] = useState<TabKey>('ssh');
+  const [tab, setTab] = useState<TabKey>('security');
   const [s, setS] = useState<SyeSettings>(JSON.parse(JSON.stringify(settings)));
   const dirty = JSON.stringify(s) !== JSON.stringify(settings);
 
@@ -75,7 +74,7 @@ export default function Settings({ settings, onSave, onClose, onBackupExport, on
             </div>
             <div style={{ flex: 1, lineHeight: 1.2 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Settings</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>SSH defaults, security, backup</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Security and backup</div>
             </div>
             <button onClick={onClose} title="Close (Esc)" style={iconBtnStyle}>
               <X size={15} />
@@ -112,30 +111,8 @@ export default function Settings({ settings, onSave, onClose, onBackupExport, on
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px' }}>
-            {tab === 'ssh' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <Field label="Default port">
-                    <NumberInput value={s.ssh.defaultPort} onChange={v => update('ssh', 'defaultPort', v)} />
-                  </Field>
-                  <Field label="Keepalive (s)">
-                    <NumberInput value={s.ssh.keepalive} onChange={v => update('ssh', 'keepalive', v)} />
-                  </Field>
-                  <Field label="Timeout (s)">
-                    <NumberInput value={s.ssh.connectionTimeout} onChange={v => update('ssh', 'connectionTimeout', v)} />
-                  </Field>
-                </div>
-                <div style={helpText}>
-                  These defaults apply when creating new sessions. Per-session values in the session editor override these.
-                </div>
-              </div>
-            )}
-
             {tab === 'security' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <Field label="Auto-lock (minutes — 0 disables)">
-                  <NumberInput value={s.security.autoLockMinutes} onChange={v => update('security', 'autoLockMinutes', v)} />
-                </Field>
                 <ToggleRow
                   title="Stealth connect"
                   body="Minimize what the server can fingerprint about your client: generic SSH identity string, no agent forwarding, no forwarded env vars, stripped public-key comment. Your IP and username are still visible."
@@ -199,46 +176,6 @@ export default function Settings({ settings, onSave, onClose, onBackupExport, on
         </motion.div>
       </motion.div>
     </AnimatePresence>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{
-        fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1.2,
-        color: 'var(--text-muted)', marginBottom: 5,
-      }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function NumberInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <input
-      type="number"
-      value={value}
-      onChange={e => onChange(Number(e.target.value) || 0)}
-      style={{
-        width: '100%', padding: '9px 12px', borderRadius: 8,
-        background: 'rgba(140,170,230,0.05)',
-        border: '1px solid var(--border-subtle)',
-        color: 'var(--text-primary)', fontSize: 12.5,
-        fontFamily: 'var(--font-mono)',
-        outline: 'none', transition: 'border-color 150ms, background 150ms, box-shadow 150ms',
-      }}
-      onFocus={e => {
-        e.currentTarget.style.borderColor = 'rgba(90,162,255,0.4)';
-        e.currentTarget.style.background = 'rgba(90,162,255,0.06)';
-        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(90,162,255,0.1)';
-      }}
-      onBlur={e => {
-        e.currentTarget.style.borderColor = 'var(--border-subtle)';
-        e.currentTarget.style.background = 'rgba(140,170,230,0.05)';
-        e.currentTarget.style.boxShadow = 'none';
-      }}
-    />
   );
 }
 

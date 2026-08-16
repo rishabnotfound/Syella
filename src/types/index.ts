@@ -86,14 +86,7 @@ export interface SyeSettings {
     copyOnSelect: boolean;
     bellStyle: 'none' | 'sound' | 'visual';
   };
-  ssh: {
-    defaultPort: number;
-    keepalive: number;
-    connectionTimeout: number;
-  };
   security: {
-    autoLockMinutes: number;
-    clearClipboardSeconds: number;
     stealthConnect: boolean;
   };
   general: {
@@ -150,6 +143,7 @@ export type IpcChannels =
   | 'dialog:openFile'
   | 'dialog:saveFile'
   | 'dialog:openDirectory'
+  | 'keyfile:read'
   | 'window:minimize'
   | 'window:maximize'
   | 'window:close';

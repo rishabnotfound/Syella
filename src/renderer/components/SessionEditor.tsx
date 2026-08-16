@@ -96,12 +96,19 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
     onSave(s, password, privateKey, passphrase);
   };
 
+  const [keyError, setKeyError] = useState('');
   const browseKey = async () => {
+    setKeyError('');
     const files = await window.syella.invoke('dialog:openFile', {
       title: 'Select Private Key', properties: ['openFile'],
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
-    if (files?.[0]) setPrivateKey(files[0]);
+    if (!files?.[0]) return;
+    // ssh2 expects the key material itself, not a path — read it here so the
+    // user doesn't have to paste PEM contents by hand.
+    const res = await window.syella.invoke('keyfile:read', files[0]);
+    if (res?.ok) setPrivateKey(res.text);
+    else setKeyError(res?.error || 'Could not read key file');
   };
 
   const sections: { id: Section; label: string; Icon: React.ComponentType<any>; complete?: boolean }[] = useMemo(() => [
@@ -110,7 +117,7 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
     { id: 'billing', label: 'Billing', Icon: DollarSign, complete: !!(provider || costAmount || expiresAt) },
   ], [host, authMethod, password, privateKey, provider, costAmount, expiresAt]);
 
-  const canSave = !!host;
+  const canSave = !!host.trim();
   const isWizardStep = isNew && section !== 'billing';
   const nextSection: Section | null =
     section === 'identity' ? 'auth'
@@ -331,13 +338,21 @@ export default function SessionEditor({ session, groups, onSave, onDelete, onClo
                       <motion.div key="key" {...swapMotion} style={sectionColStyle}>
                         <Field label="Private Key" Icon={FileKey}>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <Input flex value={privateKey} onChange={setPrivateKey} placeholder="/path/to/id_rsa or paste key" mono />
+                            <Input flex value={privateKey} onChange={v => { setPrivateKey(v); if (keyError) setKeyError(''); }} placeholder="Paste key contents or click Browse" mono />
                             <motion.button whileTap={{ scale: 0.96 }}
                               onClick={browseKey}
                               style={{ ...sideBtnStyle, width: 'auto', padding: '0 14px', fontSize: 12, fontWeight: 500 }}>
                               Browse
                             </motion.button>
                           </div>
+                          {keyError && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--danger)' }}>{keyError}</div>
+                          )}
+                          {privateKey && !keyError && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-faint)' }}>
+                              Key loaded ({privateKey.length.toLocaleString()} chars)
+                            </div>
+                          )}
                         </Field>
                         <Field label="Passphrase" Icon={KeyRound}>
                           <div style={{ display: 'flex', gap: 6 }}>
